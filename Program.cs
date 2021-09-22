@@ -18,11 +18,6 @@ namespace MirageStandalone
                 server.Update();
                 client.Update();
 
-
-                if (client.IsConnected)
-                {
-                    //client.Send(new ArraySegment<byte>(new byte[] { 1, 2, 3, 4, 5 }));
-                }
                 Thread.Sleep(5);
             }
         }
