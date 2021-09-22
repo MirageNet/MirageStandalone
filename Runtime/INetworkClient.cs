@@ -36,7 +36,7 @@ namespace Mirage
         /// </summary>
         bool IsLocalClient { get; }
 
-        //NetworkWorld World { get; }
+        NetworkWorld World { get; }
 
         void Disconnect();
     }

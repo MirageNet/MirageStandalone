@@ -24,6 +24,8 @@
 
         void LogWarningFormat(object message, object extra);
 
+        void LogError(object message, object extra);
+
         void LogError(ILogger logger, object message);
 
         void LogException(Exception ex);
@@ -59,7 +61,14 @@
             Console.WriteLine(message);
         }
 
-        public void LogException(Exception ex)
+        public void LogError(object message, object extra)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+
+            Console.WriteLine(message + " : " + extra);
+        }
+
+    public void LogException(Exception ex)
         {
             Console.ForegroundColor = ConsoleColor.Red;
 

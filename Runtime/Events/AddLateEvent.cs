@@ -1,9 +1,7 @@
-//using System;
-//using UnityEngine;
-//using UnityEngine.Events;
+using System;
 
-//namespace Mirage.Events
-//{
+namespace Mirage.Events
+{
 //    /// <summary>
 //    /// An event that will invoke handlers immediately if they are added after <see cref="Invoke"/> has been called
 //    /// </summary>
@@ -180,4 +178,4 @@
 //            _event.Invoke(arg0, arg1);
 //        }
 //    }
-//}
+}

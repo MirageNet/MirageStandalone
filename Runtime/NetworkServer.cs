@@ -139,7 +139,7 @@ namespace Mirage
         public bool Active { get; private set; }
 
         public NetworkWorld World { get; private set; }
-        //public SyncVarSender SyncVarSender { get; private set; }
+        public SyncVarSender SyncVarSender { get; private set; }
         public MessageHandler MessageHandler { get; private set; }
 
 
