@@ -2,6 +2,7 @@ using System;
 using Mirage.Logging;
 using Mirage.Serialization;
 using Mirage.SocketLayer;
+using Mirage.Sockets.Udp;
 
 namespace Mirage
 {
@@ -146,8 +147,8 @@ namespace Mirage
 
         void ThrowIfSocketIsMissing()
         {
-            //if (SocketFactory is null)
-            //    SocketFactory = GetComponent<SocketFactory>();
+            if (SocketFactory is null)
+                SocketFactory = new UdpSocketFactory();
             if (SocketFactory == null)
                 throw new InvalidOperationException($"{nameof(SocketFactory)} could not be found for ${nameof(NetworkServer)}");
         }

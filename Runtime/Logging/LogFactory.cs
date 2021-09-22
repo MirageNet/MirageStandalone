@@ -23,6 +23,7 @@ namespace Mirage.Logging
                 return logger;
             }
 
+            logger = new StandaloneLogger();
             //logger = new Logger(Debug.unityLogger)
             //{
                 // by default, log warnings and up
@@ -60,7 +61,7 @@ namespace Mirage.Logging
             logger.Log(LogType.Warning, message);
         }
 
-        public static bool LogEnabled(this ILogger logger) => logger.IsLogTypeAllowed(LogType.Log);
+        public static bool LogEnabled(this ILogger logger) => true;// logger.IsLogTypeAllowed(LogType.Log);
 
         public static bool WarnEnabled(this ILogger logger) => logger.IsLogTypeAllowed(LogType.Warning);
 
