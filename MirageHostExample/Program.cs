@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System.Threading;
+using System.Threading.Tasks;
 using Mirage;
 
 namespace MirageHostExample
@@ -11,14 +12,14 @@ namespace MirageHostExample
 
         static void Main(string[] args)
         {
+            Server.StartServer();
+            Client.Connect("localhost");
+
             TaskRunner = Task.Run(Run);
         }
 
         private static async void Run()
         {
-            Server.StartServer();
-            Client.Connect("localhost");
-
             while (true)
             {
                 Server.Update();
