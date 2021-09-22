@@ -1,18 +1,3 @@
-# Created by weaver tests
-Assets/Tests/Weaver/**/CompilationLog.txt
-
-# Created by performance test
-Assets/StreamingAssets/
-Assets/StreamingAssets.meta
-Assets/Resources
-Assets/Resources.meta
-
-# =============== #
-# Unity generated #
-# =============== #
-Source/Temp/
-Source/Library/
-
 # ===================================== #
 # Project specific #
 # ===================================== #
@@ -24,16 +9,13 @@ Database/
 # ===================================== #
 ExportedObj/
 obj/
-*.svd
 *.userprefs
-/*.csproj
 Source/Assembly-CSharp.csproj
 Source/Assembly-CSharp-Editor.csproj
 Source/Assembly-CSharp-firstpass.csproj
 Source/Source.sln
 *.pidb
 *.suo
-/*.sln
 *.user
 *.unityproj
 *.booproj
