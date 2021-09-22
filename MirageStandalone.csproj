@@ -10,7 +10,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Mono.Cecil" Version="0.11.4" />
+    <Compile Remove="MirageTests\**" />
+    <Compile Remove="WeaverExample\**" />
+    <Compile Remove="Weaver\**" />
+    <EmbeddedResource Remove="MirageTests\**" />
+    <EmbeddedResource Remove="WeaverExample\**" />
+    <EmbeddedResource Remove="Weaver\**" />
+    <None Remove="MirageTests\**" />
+    <None Remove="WeaverExample\**" />
+    <None Remove="Weaver\**" />
   </ItemGroup>
 
 </Project>

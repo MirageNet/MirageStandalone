@@ -5,7 +5,11 @@ VisualStudioVersion = 16.0.31205.134
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MirageStandalone", "MirageStandalone.csproj", "{9AB16B5A-2A1A-43BA-91F6-4F994462F729}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MirageTests", "MirageTests\MirageTests.csproj", "{BF78519A-26E3-42C5-8A24-0D338EBA4ECB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MirageTests", "MirageTests\MirageTests.csproj", "{BF78519A-26E3-42C5-8A24-0D338EBA4ECB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Weaver", "Weaver\Weaver.csproj", "{5199C4D1-37C3-4E85-B31B-910E6D496964}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WeaverExample", "WeaverExample\WeaverExample.csproj", "{A994E25C-90CB-4CEC-BAAA-820E29AB1EEF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +25,14 @@ Global
 		{BF78519A-26E3-42C5-8A24-0D338EBA4ECB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BF78519A-26E3-42C5-8A24-0D338EBA4ECB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BF78519A-26E3-42C5-8A24-0D338EBA4ECB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5199C4D1-37C3-4E85-B31B-910E6D496964}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5199C4D1-37C3-4E85-B31B-910E6D496964}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5199C4D1-37C3-4E85-B31B-910E6D496964}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5199C4D1-37C3-4E85-B31B-910E6D496964}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A994E25C-90CB-4CEC-BAAA-820E29AB1EEF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A994E25C-90CB-4CEC-BAAA-820E29AB1EEF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A994E25C-90CB-4CEC-BAAA-820E29AB1EEF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A994E25C-90CB-4CEC-BAAA-820E29AB1EEF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
