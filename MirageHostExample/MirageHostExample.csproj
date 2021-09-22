@@ -5,9 +5,9 @@
     <TargetFramework>net5.0</TargetFramework>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Mono.Cecil" Version="0.11.4" />
-  </ItemGroup>
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="$(SolutionDir)\Weaver\bin\Debug\net5.0\Weaver.exe $(TargetPath)" />
+  </Target>
 
   <ItemGroup>
     <ProjectReference Include="..\Mirage\Mirage.csproj" />

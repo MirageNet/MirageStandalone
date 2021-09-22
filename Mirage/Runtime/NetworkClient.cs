@@ -269,7 +269,7 @@ namespace Mirage
             Player.Send(segment, channelId);
         }
 
-        internal void Update()
+        public void Update()
         {
             // local connection?
             if (!IsLocalClient && Active && connectState == ConnectState.Connected)

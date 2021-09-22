@@ -264,7 +264,7 @@ namespace Mirage
             }
         }
 
-        internal void Update()
+        public void Update()
         {
             peer?.Update();
             //SyncVarSender?.Update();
