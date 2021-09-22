@@ -52,18 +52,18 @@ namespace Mirage
             offsetMax = double.MaxValue;
         }
 
-        //internal void UpdateClient(INetworkClient client)
-        //{
-        //    if (UnityEngine.Time.time - lastPingTime >= PingFrequency)
-        //    {
-        //        var pingMessage = new NetworkPingMessage
-        //        {
-        //            clientTime = LocalTime()
-        //        };
-        //        client.Send(pingMessage, Channel.Unreliable);
-        //        lastPingTime = UnityEngine.Time.time;
-        //    }
-        //}
+        internal void UpdateClient(INetworkClient client)
+        {
+            if (DateTime.UtcNow.Ticks - lastPingTime >= PingFrequency)
+            {
+                var pingMessage = new NetworkPingMessage
+                {
+                    clientTime = LocalTime()
+                };
+                client.Send(pingMessage, Channel.Unreliable);
+                lastPingTime = DateTime.UtcNow.Ticks;
+            }
+        }
 
         // executed at the server when we receive a ping message
         // reply with a pong containing the time from the client

@@ -138,7 +138,7 @@ namespace Mirage
         /// </summary>
         public bool Active { get; private set; }
 
-        //public NetworkWorld World { get; private set; }
+        public NetworkWorld World { get; private set; }
         //public SyncVarSender SyncVarSender { get; private set; }
         public MessageHandler MessageHandler { get; private set; }
 
@@ -190,12 +190,12 @@ namespace Mirage
             logger.Assert(Players.Count == 0, "Player should have been reset since previous session");
             logger.Assert(connections.Count == 0, "Connections should have been reset since previous session");
 
-            //World = new NetworkWorld();
+            World = new NetworkWorld();
             //SyncVarSender = new SyncVarSender();
 
             LocalClient = localClient;
             MessageHandler = new MessageHandler(DisconnectOnException);
-            //MessageHandler.RegisterHandler<NetworkPingMessage>(World.Time.OnServerPing);
+            MessageHandler.RegisterHandler<NetworkPingMessage>(World.Time.OnServerPing);
 
             ISocket socket = SocketFactory.CreateServerSocket();
             var dataHandler = new DataHandler(MessageHandler, connections);
@@ -315,7 +315,7 @@ namespace Mirage
             //_onStopHost.Reset();
             //_stopped.Reset();
 
-            //World = null;
+            World = null;
             //SyncVarSender = null;
 
             //Application.quitting -= Stop;

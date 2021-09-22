@@ -88,7 +88,7 @@ namespace Mirage
         /// </summary>
         public bool IsConnected => connectState == ConnectState.Connected;
 
-        //public NetworkWorld World { get; private set; }
+        public NetworkWorld World { get; private set; }
         public MessageHandler MessageHandler { get; private set; }
 
 
@@ -109,7 +109,7 @@ namespace Mirage
 
             connectState = ConnectState.Connecting;
 
-            //World = new NetworkWorld();
+            World = new NetworkWorld();
 
             IEndPoint endPoint = SocketFactory.GetConnectEndPoint(address, port);
             if (logger.LogEnabled()) logger.Log($"Client connecting to endpoint: {endPoint}");
@@ -155,7 +155,7 @@ namespace Mirage
 
         private void Peer_OnConnected(IConnection conn)
         {
-            //World.Time.UpdateClient(this);
+            World.Time.UpdateClient(this);
             connectState = ConnectState.Connected;
             Connected.Invoke(Player);
         }
