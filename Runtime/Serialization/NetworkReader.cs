@@ -359,17 +359,17 @@ namespace Mirage.Serialization
         /// <typeparam name="T"></typeparam>
         /// <param name="value"></param>
         /// <param name="byteSize"></param>
-        public void PadAndCopy<T>(int byteSize, out T value) where T : struct
-        {
-            PadToByte();
-            int newPosition = bitPosition + (64 * byteSize);
-            CheckNewLength(newPosition);
+        //public void PadAndCopy<T>(int byteSize, out T value) where T : struct
+        //{
+        //    PadToByte();
+        //    int newPosition = bitPosition + (64 * byteSize);
+        //    CheckNewLength(newPosition);
 
-            byte* startPtr = ((byte*)longPtr) + (bitPosition >> 3);
+        //    byte* startPtr = ((byte*)longPtr) + (bitPosition >> 3);
 
-            UnsafeUtility.CopyPtrToStructure(startPtr, out value);
-            bitPosition = newPosition;
-        }
+        //    UnsafeUtility.CopyPtrToStructure(startPtr, out value);
+        //    bitPosition = newPosition;
+        //}
 
         /// <summary>
         /// <para>

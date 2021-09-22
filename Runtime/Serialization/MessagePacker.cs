@@ -46,7 +46,7 @@ namespace Mirage.Serialization
             // paul: 16 bits is enough to avoid collisions
             //  - keeps the message size small because it gets varinted
             //  - in case of collisions,  Mirage will display an error
-            return type.FullName.GetStableHashCode() & 0xFFFF;
+            return type.FullName.GetHashCode() & 0xFFFF;
         }
 
         // pack message before sending

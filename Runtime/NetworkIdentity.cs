@@ -8,8 +8,8 @@
 //using Mirage.Serialization;
 //using Mirage.Events;
 
-//namespace Mirage
-//{
+namespace Mirage
+{
 //    /// <summary>
 //    /// The NetworkIdentity identifies objects across the network, between server and clients.
 //    /// Its primary data is a NetworkInstanceId which is allocated by the server and then set on clients.
@@ -102,8 +102,8 @@
 //    //[DisallowMultipleComponent]
 //    //[AddComponentMenu("Network/NetworkIdentity")]
 //    //[HelpURL("https://miragenet.github.io/Mirage/Articles/Components/NetworkIdentity.html")]
-//    public sealed class NetworkIdentity
-//    {
+    public sealed class NetworkIdentity
+    {
 //        static readonly ILogger logger = LogFactory.GetLogger<NetworkIdentity>();
 
 //        //[NonSerialized]
@@ -1336,5 +1336,5 @@
 //                comp.ResetSyncObjects();
 //            }
 //        }
-//    }
-//}
+    }
+}

@@ -90,7 +90,7 @@ namespace Mirage.Serialization
             this.allowResize = allowResize;
 
             // ensure capacity is multiple of 8
-            int ulongCapacity = Mathf.CeilToInt(minByteCapacity / (float)sizeof(ulong));
+            int ulongCapacity = (int)Math.Ceiling(minByteCapacity / (float)sizeof(ulong));
             int byteCapacity = ulongCapacity * sizeof(ulong);
 
             bitCapacity = byteCapacity * 8;
@@ -363,17 +363,17 @@ namespace Mirage.Serialization
         /// <typeparam name="T"></typeparam>
         /// <param name="value"></param>
         /// <param name="byteSize">size of struct, in bytes</param>
-        public void PadAndCopy<T>(ref T value, int byteSize) where T : struct
-        {
-            PadToByte();
-            int newPosition = bitPosition + (8 * byteSize);
-            CheckCapacity(newPosition);
+        //public void PadAndCopy<T>(ref T value, int byteSize) where T : struct
+        //{
+        //    PadToByte();
+        //    int newPosition = bitPosition + (8 * byteSize);
+        //    CheckCapacity(newPosition);
 
-            byte* startPtr = ((byte*)longPtr) + (bitPosition >> 3);
+        //    byte* startPtr = ((byte*)longPtr) + (bitPosition >> 3);
 
-            UnsafeUtility.CopyStructureToPtr(ref value, startPtr);
-            bitPosition = newPosition;
-        }
+        //    UnsafeUtility.CopyStructureToPtr(ref value, startPtr);
+        //    bitPosition = newPosition;
+        //}
 
         /// <summary>
         /// <para>

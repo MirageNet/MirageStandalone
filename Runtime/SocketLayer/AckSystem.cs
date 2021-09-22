@@ -334,7 +334,7 @@ namespace Mirage.SocketLayer
                 throw new ArgumentException($"Message is bigger than MTU for fragmentation, max Reliable fragmented size is {maxFragmentsMessageSize}", nameof(length));
             }
 
-            int fragments = Mathf.CeilToInt(length / (float)SizePerFragment);
+            int fragments = (int)Math.Ceiling(length / (float)SizePerFragment);
 
             int remaining = length;
             for (int i = 0; i < fragments; i++)
