@@ -1,8 +1,8 @@
+using Mono.Cecil;
+using Mono.Cecil.Cil;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Mono.Cecil;
-using Mono.Cecil.Cil;
 using ConditionalAttribute = System.Diagnostics.ConditionalAttribute;
 
 namespace Mirage.Weaver
@@ -36,35 +36,35 @@ namespace Mirage.Weaver
             this.logger = logger;
         }
 
-        public AssemblyDefinition Weave(CompiledAssembly compiledAssembly)
+        public AssemblyDefinition Weave(ICompiledAssembly compiledAssembly)
         {
             try
             {
-                timer = new WeaverDiagnosticsTimer() { writeToFile = true };
-                timer.Start(compiledAssembly.Name);
+                this.timer = new WeaverDiagnosticsTimer() { writeToFile = true };
+                this.timer.Start(compiledAssembly.Name);
 
-                using (timer.Sample("AssemblyDefinitionFor"))
+                using (this.timer.Sample("AssemblyDefinitionFor"))
                 {
-                    CurrentAssembly = AssemblyDefinitionFor(compiledAssembly);
+                    this.CurrentAssembly = AssemblyDefinitionFor(compiledAssembly);
                 }
 
-                ModuleDefinition module = CurrentAssembly.MainModule;
-                readers = new Readers(module, logger);
-                writers = new Writers(module, logger);
-                propertySiteProcessor = new PropertySiteProcessor();
-                var rwProcessor = new ReaderWriterProcessor(module, readers, writers);
+                ModuleDefinition module = this.CurrentAssembly.MainModule;
+                this.readers = new Readers(module, this.logger);
+                this.writers = new Writers(module, this.logger);
+                this.propertySiteProcessor = new PropertySiteProcessor();
+                var rwProcessor = new ReaderWriterProcessor(module, this.readers, this.writers);
 
                 bool modified = false;
-                using (timer.Sample("ReaderWriterProcessor"))
+                using (this.timer.Sample("ReaderWriterProcessor"))
                 {
                     modified = rwProcessor.Process();
                 }
 
-                IReadOnlyList<FoundType> foundTypes = FindAllClasses(module);
+                IReadOnlyList<FoundType> foundTypes = this.FindAllClasses(module);
 
-                using (timer.Sample("AttributeProcessor"))
+                using (this.timer.Sample("AttributeProcessor"))
                 {
-                    var attributeProcessor = new AttributeProcessor(module, logger);
+                    var attributeProcessor = new AttributeProcessor(module, this.logger);
                     modified |= attributeProcessor.ProcessTypes(foundTypes);
                 }
 
@@ -80,32 +80,32 @@ namespace Mirage.Weaver
 
                 if (modified)
                 {
-                    using (timer.Sample("propertySiteProcessor"))
+                    using (this.timer.Sample("propertySiteProcessor"))
                     {
-                        propertySiteProcessor.Process(module);
+                        this.propertySiteProcessor.Process(module);
                     }
 
-                    using (timer.Sample("InitializeReaderAndWriters"))
+                    using (this.timer.Sample("InitializeReaderAndWriters"))
                     {
                         rwProcessor.InitializeReaderAndWriters();
                     }
                 }
 
-                return CurrentAssembly;
+                return this.CurrentAssembly;
             }
             catch (Exception e)
             {
-                logger.Error("Exception :" + e);
+                this.logger.Error("Exception :" + e);
                 return null;
             }
             finally
             {
                 // end in finally incase it return early
-                timer?.End();
+                this.timer?.End();
             }
         }
 
-        public static AssemblyDefinition AssemblyDefinitionFor(CompiledAssembly compiledAssembly)
+        public static AssemblyDefinition AssemblyDefinitionFor(ICompiledAssembly compiledAssembly)
         {
             var assemblyResolver = new PostProcessorAssemblyResolver(compiledAssembly);
             var readerParameters = new ReaderParameters
@@ -130,16 +130,16 @@ namespace Mirage.Weaver
 
         IReadOnlyList<FoundType> FindAllClasses(ModuleDefinition module)
         {
-            using (timer.Sample("FindAllClasses"))
+            using (this.timer.Sample("FindAllClasses"))
             {
                 var foundTypes = new List<FoundType>();
                 foreach (TypeDefinition type in module.Types)
                 {
-                    ProcessType(type, foundTypes);
+                    this.ProcessType(type, foundTypes);
 
                     foreach (TypeDefinition nested in type.NestedTypes)
                     {
-                        ProcessType(nested, foundTypes);
+                        this.ProcessType(nested, foundTypes);
                     }
                 }
 
@@ -228,37 +228,14 @@ namespace Mirage.Weaver
 
         public FoundType(TypeDefinition typeDefinition, bool isNetworkBehaviour, bool isMonoBehaviour)
         {
-            TypeDefinition = typeDefinition;
-            IsNetworkBehaviour = isNetworkBehaviour;
-            IsMonoBehaviour = isMonoBehaviour;
+            this.TypeDefinition = typeDefinition;
+            this.IsNetworkBehaviour = isNetworkBehaviour;
+            this.IsMonoBehaviour = isMonoBehaviour;
         }
 
         public override string ToString()
         {
-            return TypeDefinition.ToString();
+            return this.TypeDefinition.ToString();
         }
-    }
-
-    public class CompiledAssembly
-    {
-        public string Name { get; set; }
-        public string[] References { get; set; }
-        public string[] Defines { get; set; }
-
-        public byte[] PeData { get; set; }
-        public byte[] PdbData { get; set; }
-
-        public InMemoryAssembly InMemoryAssembly;
-    }
-
-    public class InMemoryAssembly
-    {
-        public InMemoryAssembly(byte[] peData, byte[] pdbData)
-        {
-
-        }
-
-        public byte[] PeData { get; set; }
-        public byte[] PdbData { get; set; }
     }
 }

@@ -1,9 +1,9 @@
+using Mono.Cecil;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using Mono.Cecil;
 
 namespace Mirage.Weaver
 {
@@ -12,21 +12,21 @@ namespace Mirage.Weaver
         private readonly string[] _assemblyReferences;
         private readonly string[] _assemblyReferencesFileName;
         private readonly Dictionary<string, AssemblyDefinition> _assemblyCache = new Dictionary<string, AssemblyDefinition>();
-        private readonly CompiledAssembly _compiledAssembly;
+        private readonly ICompiledAssembly _compiledAssembly;
         private AssemblyDefinition _selfAssembly;
 
-        public PostProcessorAssemblyResolver(CompiledAssembly compiledAssembly)
+        public PostProcessorAssemblyResolver(ICompiledAssembly compiledAssembly)
         {
-            _compiledAssembly = compiledAssembly;
-            _assemblyReferences = compiledAssembly.References;
+            this._compiledAssembly = compiledAssembly;
+            this._assemblyReferences = compiledAssembly.References;
             // cache paths here so we dont need to call it each time we resolve
-            _assemblyReferencesFileName = _assemblyReferences.Select(r => Path.GetFileName(r)).ToArray();
+            this._assemblyReferencesFileName = this._assemblyReferences.Select(r => Path.GetFileName(r)).ToArray();
         }
 
 
         public void Dispose()
         {
-            Dispose(true);
+            this.Dispose(true);
             GC.SuppressFinalize(this);
         }
 
@@ -35,16 +35,16 @@ namespace Mirage.Weaver
             // Cleanup
         }
 
-        public AssemblyDefinition Resolve(AssemblyNameReference name) => Resolve(name, new ReaderParameters(ReadingMode.Deferred));
+        public AssemblyDefinition Resolve(AssemblyNameReference name) => this.Resolve(name, new ReaderParameters(ReadingMode.Deferred));
 
         public AssemblyDefinition Resolve(AssemblyNameReference name, ReaderParameters parameters)
         {
-            lock (_assemblyCache)
+            lock (this._assemblyCache)
             {
-                if (name.Name == _compiledAssembly.Name)
-                    return _selfAssembly;
+                if (name.Name == this._compiledAssembly.Name)
+                    return this._selfAssembly;
 
-                string fileName = FindFile(name);
+                string fileName = this.FindFile(name);
                 if (fileName == null)
                     return null;
 
@@ -52,7 +52,7 @@ namespace Mirage.Weaver
 
                 string cacheKey = fileName + lastWriteTime;
 
-                if (_assemblyCache.TryGetValue(cacheKey, out AssemblyDefinition result))
+                if (this._assemblyCache.TryGetValue(cacheKey, out AssemblyDefinition result))
                     return result;
 
                 parameters.AssemblyResolver = this;
@@ -64,7 +64,7 @@ namespace Mirage.Weaver
                     parameters.SymbolStream = MemoryStreamFor(pdb);
 
                 var assemblyDefinition = AssemblyDefinition.ReadAssembly(ms, parameters);
-                _assemblyCache.Add(cacheKey, assemblyDefinition);
+                this._assemblyCache.Add(cacheKey, assemblyDefinition);
                 return assemblyDefinition;
             }
         }
@@ -76,12 +76,12 @@ namespace Mirage.Weaver
             // first pass, check if we can find dll or exe file
             string dllName = name.Name + ".dll";
             string exeName = name.Name + ".exe";
-            for (int i = 0; i < _assemblyReferencesFileName.Length; i++)
+            for (int i = 0; i < this._assemblyReferencesFileName.Length; i++)
             {
                 // if filename matches, return full path
-                string fileName = _assemblyReferencesFileName[i];
+                string fileName = this._assemblyReferencesFileName[i];
                 if (fileName == dllName || fileName == exeName)
-                    return _assemblyReferences[i];
+                    return this._assemblyReferences[i];
             }
 
             // second pass (only run if first fails), 
@@ -93,7 +93,7 @@ namespace Mirage.Weaver
             //in the ILPostProcessing API. As a workaround, we rely on the fact here that the indirect references
             //are always located next to direct references, so we search in all directories of direct references we
             //got passed, and if we find the file in there, we resolve to it.
-            IEnumerable<string> allParentDirectories = _assemblyReferences.Select(Path.GetDirectoryName).Distinct();
+            IEnumerable<string> allParentDirectories = this._assemblyReferences.Select(Path.GetDirectoryName).Distinct();
             foreach (string parentDir in allParentDirectories)
             {
                 string candidate = Path.Combine(parentDir, name.Name + ".dll");
@@ -139,7 +139,7 @@ namespace Mirage.Weaver
 
         public void AddAssemblyDefinitionBeingOperatedOn(AssemblyDefinition assemblyDefinition)
         {
-            _selfAssembly = assemblyDefinition;
+            this._selfAssembly = assemblyDefinition;
         }
     }
 }
