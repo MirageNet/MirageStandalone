@@ -19,7 +19,7 @@ namespace Mirage.Sockets.Udp
         //[Header("NanoSocket options")]
         public int BufferSize = 256 * 1024;
 
-        bool useNanoSocket = true;//=> SocketLib == SocketLib.Native || (SocketLib == SocketLib.Automatic && IsDesktop);
+        bool useNanoSocket = false;//=> SocketLib == SocketLib.Native || (SocketLib == SocketLib.Automatic && IsDesktop);
 
         static int initCount;
 

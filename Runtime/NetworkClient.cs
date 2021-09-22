@@ -137,7 +137,7 @@ namespace Mirage
             RegisterMessageHandlers();
             InitializeAuthEvents();
             // invoke started event after everything is set up, but before peer has connected
-            Started.Invoke();
+            Started?.Invoke();
         }
 
         void ThrowIfActive()
@@ -231,7 +231,7 @@ namespace Mirage
 
         internal void OnAuthenticated(INetworkPlayer player)
         {
-            Authenticated.Invoke(player);
+            Authenticated?.Invoke(player);
         }
 
         /// <summary>
