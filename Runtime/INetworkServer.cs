@@ -1,5 +1,5 @@
+using System;
 using System.Collections.Generic;
-using Mirage.Events;
 
 namespace Mirage
 {
@@ -8,35 +8,35 @@ namespace Mirage
         /// <summary>
         /// This is invoked when a server is started - including when a host is started.
         /// </summary>
-        IAddLateEvent Started { get; }
+        Action Started { get; }
 
         /// <summary>
         /// Event fires once a new Client has connect to the Server.
         /// </summary>
-        NetworkPlayerEvent Connected { get; }
+        Action<INetworkPlayer> Connected { get; }
 
         /// <summary>
         /// Event fires once a new Client has passed Authentication to the Server.
         /// </summary>
-        NetworkPlayerEvent Authenticated { get; }
+        Action<INetworkPlayer> Authenticated { get; }
 
         /// <summary>
         /// Event fires once a Client has Disconnected from the Server.
         /// </summary>
-        NetworkPlayerEvent Disconnected { get; }
+        Action<INetworkPlayer> Disconnected { get; }
 
-        IAddLateEvent Stopped { get; }
+        Action Stopped { get; }
 
         /// <summary>
         /// This is invoked when a host is started.
         /// <para>StartHost has multiple signatures, but they all cause this hook to be called.</para>
         /// </summary>
-        IAddLateEvent OnStartHost { get; }
+        Action OnStartHost { get; }
 
         /// <summary>
         /// This is called when a host is stopped.
         /// </summary>
-        IAddLateEvent OnStopHost { get; }
+        Action OnStopHost { get; }
 
         /// <summary>
         /// The connection to the host mode client (if any).
@@ -59,9 +59,9 @@ namespace Mirage
         /// </summary>
         bool Active { get; }
 
-        NetworkWorld World { get; }
+        //NetworkWorld World { get; }
 
-        SyncVarSender SyncVarSender { get; }
+        //SyncVarSender SyncVarSender { get; }
 
         IReadOnlyCollection<INetworkPlayer> Players { get; }
 

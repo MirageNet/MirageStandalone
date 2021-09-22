@@ -25,8 +25,6 @@ SOFTWARE.
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Unity.Collections.LowLevel.Unsafe;
-using UnityEngine;
 
 namespace Mirage.Serialization
 {
@@ -121,7 +119,7 @@ namespace Mirage.Serialization
                 }
             }
 
-            Debug.LogWarning($"Resizing buffer, new size:{size} bytes");
+            Console.WriteLine($"Resizing buffer, new size:{size} bytes");
 
             FreeHandle();
 
@@ -434,7 +432,7 @@ namespace Mirage.Serialization
             //      if bitlength == 0 then write will return
             Write(*otherPtr, bitLength);
 
-            Debug.Assert(bitPosition == newBit, "bitPosition should already be equal to newBit because it would have incremented each WriteUInt64");
+            //Debug.Assert(bitPosition == newBit, "bitPosition should already be equal to newBit because it would have incremented each WriteUInt64");
             bitPosition = newBit;
         }
     }

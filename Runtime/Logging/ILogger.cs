@@ -1,8 +1,5 @@
 ﻿using System;
 
-namespace Mirage.Logging
-{
-
     //Based on: https://docs.unity3d.com/ScriptReference/LogType.html
     public enum LogType
     {
@@ -83,4 +80,3 @@ namespace Mirage.Logging
             Console.WriteLine(message);
         }
     }
-}

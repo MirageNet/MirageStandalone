@@ -1,5 +1,4 @@
 using System;
-using UnityEngine;
 
 namespace Mirage.SocketLayer
 {
@@ -111,7 +110,7 @@ namespace Mirage.SocketLayer
         internal Connection(Peer peer, IEndPoint endPoint, IDataHandler dataHandler, Config config, Time time, Pool<ByteBuffer> bufferPool, ILogger logger, Metrics metrics)
         {
             this.peer = peer;
-            this.logger = logger ?? Debug.unityLogger;
+            this.logger = logger;//?? Debug.unityLogger;
 
             EndPoint = endPoint ?? throw new ArgumentNullException(nameof(endPoint));
             this.dataHandler = dataHandler ?? throw new ArgumentNullException(nameof(dataHandler));

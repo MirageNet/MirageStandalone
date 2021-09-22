@@ -20,7 +20,7 @@ namespace Mirage
     {
         static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkPlayer));
 
-        private readonly HashSet<NetworkIdentity> visList = new HashSet<NetworkIdentity>();
+        //private readonly HashSet<NetworkIdentity> visList = new HashSet<NetworkIdentity>();
 
         /// <summary>
         /// Transport level connection
@@ -60,7 +60,7 @@ namespace Mirage
         /// <summary>
         /// Checks if this player has a <see cref="Identity"/>
         /// </summary>
-        public bool HasCharacter => Identity != null;
+        //public bool HasCharacter => Identity != null;
 
         /// <summary>
         /// The IP address / URL / FQDN associated with the connection.
@@ -95,7 +95,7 @@ namespace Mirage
         /// <summary>
         /// The NetworkIdentity for this connection.
         /// </summary>
-        public NetworkIdentity Identity { get; set; }
+        //public NetworkIdentity Identity { get; set; }
 
         /// <summary>
         /// A list of the NetworkIdentity objects owned by this connection. This list is read-only.
@@ -104,7 +104,7 @@ namespace Mirage
         /// </summary>
         // IMPORTANT: this needs to be <NetworkIdentity>, not <uint netId>. fixes a bug where DestroyOwnedObjects wouldn't find
         //            the netId anymore: https://github.com/vis2k/Mirror/issues/1380 . Works fine with NetworkIdentity pointers though.
-        private readonly HashSet<NetworkIdentity> clientOwnedObjects = new HashSet<NetworkIdentity>();
+        //private readonly HashSet<NetworkIdentity> clientOwnedObjects = new HashSet<NetworkIdentity>();
 
         /// <summary>
         /// Creates a new NetworkConnection with the specified address and connectionId
@@ -163,68 +163,68 @@ namespace Mirage
             return $"connection({Address})";
         }
 
-        public void AddToVisList(NetworkIdentity identity)
-        {
-            visList.Add(identity);
-        }
+        //public void AddToVisList(NetworkIdentity identity)
+        //{
+        //    visList.Add(identity);
+        //}
 
-        public void RemoveFromVisList(NetworkIdentity identity)
-        {
-            visList.Remove(identity);
-        }
+        //public void RemoveFromVisList(NetworkIdentity identity)
+        //{
+        //    visList.Remove(identity);
+        //}
 
-        /// <summary>
-        /// Removes all objects that this player can see
-        /// <para>This is called when loading a new scene</para>
-        /// </summary>
-        public void RemoveAllVisibleObjects()
-        {
-            foreach (NetworkIdentity identity in visList)
-            {
-                identity.RemoveObserverInternal(this);
-            }
-            visList.Clear();
-        }
+        ///// <summary>
+        ///// Removes all objects that this player can see
+        ///// <para>This is called when loading a new scene</para>
+        ///// </summary>
+        //public void RemoveAllVisibleObjects()
+        //{
+        //    foreach (NetworkIdentity identity in visList)
+        //    {
+        //        identity.RemoveObserverInternal(this);
+        //    }
+        //    visList.Clear();
+        //}
 
-        public void AddOwnedObject(NetworkIdentity networkIdentity)
-        {
-            clientOwnedObjects.Add(networkIdentity);
-        }
+        //public void AddOwnedObject(NetworkIdentity networkIdentity)
+        //{
+        //    clientOwnedObjects.Add(networkIdentity);
+        //}
 
-        public void RemoveOwnedObject(NetworkIdentity networkIdentity)
-        {
-            clientOwnedObjects.Remove(networkIdentity);
-        }
+        //public void RemoveOwnedObject(NetworkIdentity networkIdentity)
+        //{
+        //    clientOwnedObjects.Remove(networkIdentity);
+        //}
 
-        /// <summary>
-        /// Destroy all objects owned by this player
-        /// <para>NOTE: only destroyed objects that are currently spawned</para>
-        /// </summary>
-        public void DestroyOwnedObjects()
-        {
-            // create a copy because the list might be modified when destroying
-            var ownedObjects = new HashSet<NetworkIdentity>(clientOwnedObjects);
+        ///// <summary>
+        ///// Destroy all objects owned by this player
+        ///// <para>NOTE: only destroyed objects that are currently spawned</para>
+        ///// </summary>
+        //public void DestroyOwnedObjects()
+        //{
+        //    // create a copy because the list might be modified when destroying
+        //    var ownedObjects = new HashSet<NetworkIdentity>(clientOwnedObjects);
 
-            foreach (NetworkIdentity netIdentity in ownedObjects)
-            {
-                //dont destroy self yet.
-                if (netIdentity == Identity)
-                    continue;
+        //    foreach (NetworkIdentity netIdentity in ownedObjects)
+        //    {
+        //        //dont destroy self yet.
+        //        if (netIdentity == Identity)
+        //            continue;
 
-                if (netIdentity != null && netIdentity.ServerObjectManager != null)
-                {
-                    // use SOM on object we are destroying, it should be set if object is spawned,
-                    // we can't use Identity.ServerObjectManager because if Identity is null we wont have a SOM
-                    netIdentity.ServerObjectManager.Destroy(netIdentity);
-                }
-            }
+        //        if (netIdentity != null && netIdentity.ServerObjectManager != null)
+        //        {
+        //            // use SOM on object we are destroying, it should be set if object is spawned,
+        //            // we can't use Identity.ServerObjectManager because if Identity is null we wont have a SOM
+        //            netIdentity.ServerObjectManager.Destroy(netIdentity);
+        //        }
+        //    }
 
-            if (Identity != null && Identity.ServerObjectManager != null)
-                // Destroy the connections own identity.
-                Identity.ServerObjectManager.Destroy(Identity.gameObject);
+        //    if (Identity != null && Identity.ServerObjectManager != null)
+        //        // Destroy the connections own identity.
+        //        Identity.ServerObjectManager.Destroy(Identity.gameObject);
 
-            // clear the hashset because we destroyed them all
-            clientOwnedObjects.Clear();
-        }
+        //    // clear the hashset because we destroyed them all
+        //    clientOwnedObjects.Clear();
+        //}
     }
 }

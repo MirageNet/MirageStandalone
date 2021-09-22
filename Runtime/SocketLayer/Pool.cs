@@ -1,5 +1,4 @@
 using System;
-using UnityEngine;
 
 namespace Mirage.SocketLayer
 {
@@ -58,7 +57,7 @@ namespace Mirage.SocketLayer
 
             this.bufferSize = bufferSize;
             this.maxPoolSize = maxPoolSize;
-            this.logger = logger ?? Debug.unityLogger;
+            this.logger = logger;//?? Debug.unityLogger;
 
             pool = new T[maxPoolSize];
             for (int i = 0; i < startPoolSize; i++)

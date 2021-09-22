@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using Mirage.Events;
 using Mirage.Logging;
 using Mirage.Serialization;
 using Mirage.SocketLayer;
@@ -52,54 +50,54 @@ namespace Mirage
 
         //[Header("Events")]
         //[SerializeField] 
-        AddLateEvent _started = new AddLateEvent();
+        //AddLateEvent _started = new AddLateEvent();
         /// <summary>
         /// This is invoked when a server is started - including when a host is started.
         /// </summary>
-        public IAddLateEvent Started => _started;
+        public Action Started { get; set; }
 
         /// <summary>
         /// Event fires once a new Client has connect to the Server.
         /// </summary>
         //[FormerlySerializedAs("Connected")]
         //[FoldoutEvent, SerializeField]
-        NetworkPlayerEvent _connected = new NetworkPlayerEvent();
-        public NetworkPlayerEvent Connected => _connected;
+        //NetworkPlayerEvent _connected = new NetworkPlayerEvent();
+        public Action<INetworkPlayer> Connected { get; set; }
 
         /// <summary>
         /// Event fires once a new Client has passed Authentication to the Server.
         /// </summary>
         //[FormerlySerializedAs("Authenticated")]
         //[FoldoutEvent, SerializeField]
-        NetworkPlayerEvent _authenticated = new NetworkPlayerEvent();
-        public NetworkPlayerEvent Authenticated => _authenticated;
+        //NetworkPlayerEvent _authenticated = new NetworkPlayerEvent();
+        public Action<INetworkPlayer> Authenticated { get; set; }
 
         /// <summary>
         /// Event fires once a Client has Disconnected from the Server.
         /// </summary>
         //[FormerlySerializedAs("Disconnected")]
         //[FoldoutEvent, SerializeField]
-        NetworkPlayerEvent _disconnected = new NetworkPlayerEvent();
-        public NetworkPlayerEvent Disconnected => _disconnected;
+        //NetworkPlayerEvent _disconnected = new NetworkPlayerEvent();
+        public Action<INetworkPlayer> Disconnected { get; set; }
 
         //[SerializeField]
-        AddLateEvent _stopped = new AddLateEvent();
-        public IAddLateEvent Stopped => _stopped;
+        //AddLateEvent _stopped = new AddLateEvent();
+        public Action Stopped { get; set; }
 
         /// <summary>
         /// This is invoked when a host is started.
         /// <para>StartHost has multiple signatures, but they all cause this hook to be called.</para>
         /// </summary>
         //[SerializeField] 
-        AddLateEvent _onStartHost = new AddLateEvent();
-        public IAddLateEvent OnStartHost => _onStartHost;
+        //AddLateEvent _onStartHost = new AddLateEvent();
+        public Action OnStartHost { get; set; }
 
         /// <summary>
         /// This is called when a host is stopped.
         /// </summary>
         //[SerializeField] 
-        AddLateEvent _onStopHost = new AddLateEvent();
-        public IAddLateEvent OnStopHost => _onStopHost;
+        //AddLateEvent _onStopHost = new AddLateEvent();
+        public Action OnStopHost { get; set; }
 
         /// <summary>
         /// The connection to the host mode client (if any).
@@ -123,7 +121,7 @@ namespace Mirage
         /// Number of active player objects across all connections on the server.
         /// <para>This is only valid on the host / server.</para>
         /// </summary>
-        public int NumberOfPlayers => Players.Count(kv => kv.HasCharacter);
+        public int NumberOfPlayers => Players.Count;//(kv => kv.HasCharacter);
 
         /// <summary>
         /// A list of local connections on the server.
@@ -139,8 +137,8 @@ namespace Mirage
         /// </summary>
         public bool Active { get; private set; }
 
-        public NetworkWorld World { get; private set; }
-        public SyncVarSender SyncVarSender { get; private set; }
+        //public NetworkWorld World { get; private set; }
+        //public SyncVarSender SyncVarSender { get; private set; }
         public MessageHandler MessageHandler { get; private set; }
 
 
@@ -158,7 +156,7 @@ namespace Mirage
 
             if (LocalClient != null)
             {
-                _onStopHost?.Invoke();
+                OnStopHost?.Invoke();
                 LocalClient.Disconnect();
             }
 
@@ -191,12 +189,12 @@ namespace Mirage
             logger.Assert(Players.Count == 0, "Player should have been reset since previous session");
             logger.Assert(connections.Count == 0, "Connections should have been reset since previous session");
 
-            World = new NetworkWorld();
-            SyncVarSender = new SyncVarSender();
+            //World = new NetworkWorld();
+            //SyncVarSender = new SyncVarSender();
 
             LocalClient = localClient;
             MessageHandler = new MessageHandler(DisconnectOnException);
-            MessageHandler.RegisterHandler<NetworkPingMessage>(World.Time.OnServerPing);
+            //MessageHandler.RegisterHandler<NetworkPingMessage>(World.Time.OnServerPing);
 
             ISocket socket = SocketFactory.CreateServerSocket();
             var dataHandler = new DataHandler(MessageHandler, connections);
@@ -218,13 +216,13 @@ namespace Mirage
 
             InitializeAuthEvents();
             Active = true;
-            _started?.Invoke();
+            Started?.Invoke();
 
             if (LocalClient != null)
             {
                 // we should call onStartHost after transport is ready to be used
                 // this allows server methods like NetworkServer.Spawn to be called in there
-                _onStartHost?.Invoke();
+                OnStartHost?.Invoke();
 
                 localClient.ConnectHost(this, dataHandler);
                 if (logger.LogEnabled()) logger.Log("NetworkServer StartHost");
@@ -243,8 +241,8 @@ namespace Mirage
 
         void ThrowIfSocketIsMissing()
         {
-            if (SocketFactory is null)
-                SocketFactory = GetComponent<SocketFactory>();
+            //if (SocketFactory is null)
+            //    SocketFactory = GetComponent<SocketFactory>();
             if (SocketFactory == null)
                 throw new InvalidOperationException($"{nameof(SocketFactory)} could not be found for {nameof(NetworkServer)}");
         }
@@ -256,19 +254,19 @@ namespace Mirage
                 authenticator.OnServerAuthenticated += OnAuthenticated;
                 authenticator.ServerSetup(this);
 
-                Connected.AddListener(authenticator.ServerAuthenticate);
+                Connected += authenticator.ServerAuthenticate;
             }
             else
             {
                 // if no authenticator, consider every connection as authenticated
-                Connected.AddListener(OnAuthenticated);
+                Connected += OnAuthenticated;
             }
         }
 
         internal void Update()
         {
             peer?.Update();
-            SyncVarSender?.Update();
+            //SyncVarSender?.Update();
         }
 
         private void Peer_OnConnected(IConnection conn)
@@ -300,24 +298,24 @@ namespace Mirage
             if (authenticator != null)
             {
                 authenticator.OnServerAuthenticated -= OnAuthenticated;
-                Connected.RemoveListener(authenticator.ServerAuthenticate);
+                Connected -= authenticator.ServerAuthenticate;
             }
             else
             {
                 // if no authenticator, consider every connection as authenticated
-                Connected.RemoveListener(OnAuthenticated);
+                Connected -= OnAuthenticated;
             }
 
-            _stopped?.Invoke();
+            Stopped?.Invoke();
             Active = false;
 
-            _started.Reset();
-            _onStartHost.Reset();
-            _onStopHost.Reset();
-            _stopped.Reset();
+            //_started.Reset();
+            //_onStartHost.Reset();
+            //_onStopHost.Reset();
+            //_stopped.Reset();
 
-            World = null;
-            SyncVarSender = null;
+            //World = null;
+            //SyncVarSender = null;
 
             //Application.quitting -= Stop;
 
@@ -497,8 +495,8 @@ namespace Mirage
 
             Disconnected?.Invoke(player);
 
-            player.DestroyOwnedObjects();
-            player.Identity = null;
+            //player.DestroyOwnedObjects();
+            //player.Identity = null;
 
             if (player == LocalPlayer)
                 LocalPlayer = null;

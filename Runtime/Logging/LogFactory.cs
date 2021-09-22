@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using UnityEngine;
 
 namespace Mirage.Logging
 {
@@ -24,11 +23,11 @@ namespace Mirage.Logging
                 return logger;
             }
 
-            logger = new Logger(Debug.unityLogger)
-            {
+            //logger = new Logger(Debug.unityLogger)
+            //{
                 // by default, log warnings and up
-                filterLogType = defaultLogLevel
-            };
+            //    filterLogType = defaultLogLevel
+            //};
 
             loggers[loggerName] = logger;
             return logger;

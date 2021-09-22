@@ -1,4 +1,4 @@
-using Mirage.Events;
+using System;
 
 namespace Mirage
 {
@@ -8,17 +8,17 @@ namespace Mirage
         /// <summary>
         /// Event fires once the Client has connected its Server.
         /// </summary>
-        IAddLateEvent<INetworkPlayer> Connected { get; }
+        Action<INetworkPlayer> Connected { get; }
 
         /// <summary>
         /// Event fires after the Client connection has successfully been authenticated with its Server.
         /// </summary>
-        IAddLateEvent<INetworkPlayer> Authenticated { get; }
+        Action<INetworkPlayer> Authenticated { get; }
 
         /// <summary>
         /// Event fires after the Client has disconnected from its Server and Cleanup has been called.
         /// </summary>
-        IAddLateEvent<ClientStoppedReason> Disconnected { get; }
+        Action<ClientStoppedReason> Disconnected { get; }
 
         /// <summary>
         /// The NetworkConnection object this client is using.
@@ -36,7 +36,7 @@ namespace Mirage
         /// </summary>
         bool IsLocalClient { get; }
 
-        NetworkWorld World { get; }
+        //NetworkWorld World { get; }
 
         void Disconnect();
     }

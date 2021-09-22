@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using UnityEngine;
 
 namespace Mirage.SocketLayer
 {
@@ -10,7 +9,7 @@ namespace Mirage.SocketLayer
     }
     internal class Time : ITime
     {
-        public float Now => UnityEngine.Time.time;
+        public float Now => DateTime.Now.Ticks;
     }
 
     public interface IPeer
@@ -54,7 +53,7 @@ namespace Mirage.SocketLayer
 
         public Peer(ISocket socket, IDataHandler dataHandler, Config config = null, ILogger logger = null, Metrics metrics = null)
         {
-            this.logger = logger ?? Debug.unityLogger;
+            this.logger = logger;//?? Debug.unityLogger;
             this.metrics = metrics;
             this.config = config ?? new Config();
 
@@ -65,7 +64,7 @@ namespace Mirage.SocketLayer
             connectKeyValidator = new ConnectKeyValidator();
 
             bufferPool = new Pool<ByteBuffer>(ByteBuffer.CreateNew, this.config.MaxPacketSize, this.config.BufferPoolStartSize, this.config.BufferPoolMaxSize, this.logger);
-            Application.quitting += Application_quitting;
+            //Application.quitting += Application_quitting;
         }
 
         private void Application_quitting()
@@ -106,7 +105,7 @@ namespace Mirage.SocketLayer
                 return;
             }
             active = false;
-            Application.quitting -= Application_quitting;
+            //Application.quitting -= Application_quitting;
 
             // send disconnect messages
             foreach (Connection conn in connections.Values)

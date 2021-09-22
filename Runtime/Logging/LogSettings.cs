@@ -1,11 +1,10 @@
 using System.Collections.Generic;
-using UnityEngine;
 
 namespace Mirage.Logging
 {
-    [ExecuteInEditMode]
-    [AddComponentMenu("Network/LogSettings")]
-    public class LogSettings : MonoBehaviour
+    //[ExecuteInEditMode]
+    //[AddComponentMenu("Network/LogSettings")]
+    public class LogSettings
     {
         [System.Serializable]
         public struct Level
@@ -14,7 +13,7 @@ namespace Mirage.Logging
             public LogType level;
         };
 
-        [SerializeField]
+        //[SerializeField]
         public List<Level> Levels = new List<Level>();
 
         // Start is called before the first frame update

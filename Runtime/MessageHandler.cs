@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using Mirage.Logging;
 using Mirage.Serialization;
-using UnityEngine;
 
 namespace Mirage
 {

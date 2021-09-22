@@ -1,5 +1,3 @@
-using UnityEngine;
-
 namespace Mirage.SocketLayer
 {
     internal static class LoggerExtensions
