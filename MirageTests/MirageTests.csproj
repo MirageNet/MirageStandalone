@@ -12,7 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Mirage.csproj" />
+    <ProjectReference Include="..\Mirage\Mirage.csproj" />
   </ItemGroup>
 
 </Project>
