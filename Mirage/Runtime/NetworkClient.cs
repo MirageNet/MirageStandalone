@@ -188,7 +188,7 @@ namespace Mirage
             // start connecting for setup, then "Peer_OnConnected" below will change to connected
             connectState = ConnectState.Connecting;
 
-            //World = server.World;
+            World = server.World;
 
             // create local connection objects and connect them
             MessageHandler = new MessageHandler(DisconnectOnException);
