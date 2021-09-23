@@ -100,7 +100,13 @@ namespace UnityEngine
         public object Value { get; set; }
     }
 
-    public struct Quaternion {}
+    public struct Quaternion
+    {
+        public float w;
+        public float x;
+        public float y;
+        public float z;
+    }
 
     public enum HideFlags : byte { NotEditable,HideAndDontSave };
 
@@ -116,7 +122,7 @@ namespace UnityEngine
     [AttributeUsage(AttributeTargets.Method)]
     public class RuntimeInitializeOnLoadMethodAttribute : Attribute {
         public RuntimeInitializeOnLoadMethodAttribute(RuntimeInitializeLoadType loadType) {
-            
+
         }
     }
 
