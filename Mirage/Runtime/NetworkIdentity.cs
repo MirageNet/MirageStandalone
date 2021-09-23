@@ -934,9 +934,9 @@ namespace Mirage
         internal void SetClientValues(ClientObjectManager clientObjectManager, SpawnMessage msg)
         {
             // apply local values for VR support
-            //transform.localPosition = msg.position;
-            //transform.localRotation = msg.rotation;
-            //transform.localScale = msg.scale;
+            transform.localPosition = msg.position;
+            transform.localRotation = msg.rotation;
+            transform.localScale = msg.scale;
             NetId = msg.netId;
             HasAuthority = msg.isOwner;
             ClientObjectManager = clientObjectManager;

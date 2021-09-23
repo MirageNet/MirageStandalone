@@ -188,7 +188,7 @@ namespace Mirage
             // start connecting for setup, then "Peer_OnConnected" below will change to connected
             connectState = ConnectState.Connecting;
 
-            //World = server.World;
+            World = server.World;
 
             // create local connection objects and connect them
             MessageHandler = new MessageHandler(DisconnectOnException);
@@ -275,7 +275,7 @@ namespace Mirage
             if (!IsLocalClient && Active && connectState == ConnectState.Connected)
             {
                 // only update things while connected
-                //World.Time.UpdateClient(this);
+                World.Time.UpdateClient(this);
             }
             peer?.Update();
         }
@@ -287,7 +287,7 @@ namespace Mirage
 
         internal void RegisterMessageHandlers()
         {
-            //MessageHandler.RegisterHandler<NetworkPongMessage>(World.Time.OnClientPong);
+            MessageHandler.RegisterHandler<NetworkPongMessage>(World.Time.OnClientPong);
         }
 
         /// <summary>
