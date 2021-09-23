@@ -26,6 +26,10 @@ namespace Mirage.Weaver
         public string MessageData { get; set; }
         public int Line { get; set; }
         public int Column { get; set; }
+
+        public override string ToString() {
+            return $"[{DiagnosticType}] in {File}:{Line}:{Column}: {MessageData}";
+        }
     }
 
     public class WeaverLogger : IWeaverLogger
@@ -84,6 +88,8 @@ namespace Mirage.Weaver
                 Column = sequencePoint?.StartColumn ?? 0,
                 MessageData = message
             });
+            
+            Console.WriteLine(Diagnostics[^1]);
         }
     }
 }
