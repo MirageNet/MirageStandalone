@@ -112,4 +112,15 @@ namespace UnityEngine
         public Quaternion localRotation;
         public Vector3 localScale;
     }
+
+    [AttributeUsage(AttributeTargets.Method)]
+    public class RuntimeInitializeOnLoadMethodAttribute : Attribute {
+        public RuntimeInitializeOnLoadMethodAttribute(RuntimeInitializeLoadType loadType) {
+            
+        }
+    }
+
+    public enum RuntimeInitializeLoadType {
+        BeforeSceneLoad
+    };
 }

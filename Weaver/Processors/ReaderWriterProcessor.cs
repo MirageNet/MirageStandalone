@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using Mirage.Serialization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using UnityEngine;
 
 namespace Mirage.Weaver
 {
@@ -234,15 +235,16 @@ namespace Mirage.Weaver
         /// <param name="currentAssembly"></param>
         public void InitializeReaderAndWriters()
         {
+            Console.WriteLine("Initialize readers writers");
             MethodDefinition rwInitializer = module.GeneratedClass().AddMethod(
                 "InitReadWriters",
                 Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static);
 
-            //ConstructorInfo attributeconstructor = typeof(RuntimeInitializeOnLoadMethodAttribute).GetConstructor(new[] { typeof(RuntimeInitializeLoadType) });
+            ConstructorInfo attributeconstructor = typeof(RuntimeInitializeOnLoadMethodAttribute).GetConstructor(new[] { typeof(RuntimeInitializeLoadType) });
 
-            //var customAttributeRef = new CustomAttribute(module.ImportReference(attributeconstructor));
-            //customAttributeRef.ConstructorArguments.Add(new CustomAttributeArgument(module.ImportReference<RuntimeInitializeLoadType>(), RuntimeInitializeLoadType.BeforeSceneLoad));
-            //rwInitializer.CustomAttributes.Add(customAttributeRef);
+            var customAttributeRef = new CustomAttribute(module.ImportReference(attributeconstructor));
+            customAttributeRef.ConstructorArguments.Add(new CustomAttributeArgument(module.ImportReference<RuntimeInitializeLoadType>(), RuntimeInitializeLoadType.BeforeSceneLoad));
+            rwInitializer.CustomAttributes.Add(customAttributeRef);
 
             //if (IsEditorAssembly(module))
             //{
