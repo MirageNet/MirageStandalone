@@ -2,6 +2,8 @@
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 
 namespace Mirage.Weaver
 {
@@ -11,7 +13,11 @@ namespace Mirage.Weaver
         {
             Console.WriteLine("Mirage Weaver start");
             string dllPath = args[0];
-            var compiledAssembly = new CompiledAssembly2(dllPath, new string[0], new string[0]);
+            byte[] data = File.ReadAllBytes(dllPath);
+            Assembly asm = Assembly.Load(data);
+
+            string[] references = asm.GetReferencedAssemblies().Select(a => a.Name).ToArray();
+            var compiledAssembly = new CompiledAssembly2(dllPath, references, new string[0]);
             var weaverLogger = new WeaverLogger();
             var weaver = new Weaver(weaverLogger);
             AssemblyDefinition assemblyDefinition = weaver.Weave(compiledAssembly);
