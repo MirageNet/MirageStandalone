@@ -287,7 +287,7 @@ namespace Mirage
 
         internal void RegisterMessageHandlers()
         {
-            //MessageHandler.RegisterHandler<NetworkPongMessage>(World.Time.OnClientPong);
+            MessageHandler.RegisterHandler<NetworkPongMessage>(World.Time.OnClientPong);
         }
 
         /// <summary>
