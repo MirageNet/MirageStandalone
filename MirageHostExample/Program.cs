@@ -14,12 +14,13 @@ namespace MirageHostExample
     internal class Program
     {
         static NetworkServer Server;
+        static ServerObjectManager ServerObjectManager;
         static NetworkClient Client;
+        static ClientObjectManager ClientObjectManager;
+        static NetworkSceneManager NetworkSceneManager;
 
         static void Main(string[] args)
         {
-            /// Start our pooling loop for data.
-            //_ = Task.Run(Run);
             Assembly asm = Assembly.GetExecutingAssembly();
             var methods = asm.GetTypes()
                 .SelectMany(t => t.GetMethods())
@@ -35,10 +36,32 @@ namespace MirageHostExample
                 SocketFactory = new UdpSocketFactory()
             };
 
-            Client = new NetworkClient()
+            Client = new NetworkClient
             {
                 SocketFactory = new UdpSocketFactory()
             };
+
+            NetworkSceneManager = new NetworkSceneManager
+            {
+                Client = Client,
+                Server = Server
+            };
+
+            ServerObjectManager = new ServerObjectManager
+            {
+                NetworkSceneManager = NetworkSceneManager,
+                Server = Server
+            };
+
+            ClientObjectManager = new ClientObjectManager
+            {
+                 NetworkSceneManager = NetworkSceneManager,
+                Client = Client
+            };
+
+            NetworkSceneManager.Start();
+            ServerObjectManager.Start();
+            ClientObjectManager.Start();
 
             // Boot up server.
             Server.StartServer();
