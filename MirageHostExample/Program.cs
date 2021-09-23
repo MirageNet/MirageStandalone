@@ -1,31 +1,76 @@
-﻿using System.Threading;
+﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Mirage;
+using Mirage.Sockets.Udp;
 
 namespace MirageHostExample
 {
+    [NetworkMessage]
+    public struct HelloMessage { }
     internal class Program
     {
-        static readonly NetworkServer Server = new();
-        static readonly NetworkClient Client = new();
-        static Task TaskRunner;
+        static NetworkServer Server;
+        static NetworkClient Client;
 
         static void Main(string[] args)
         {
+            /// Start our pooling loop for data.
+            //_ = Task.Run(Run);
+
+            Server = new NetworkServer
+            {
+                SocketFactory = new UdpSocketFactory()
+            };
+
+            Client = new NetworkClient()
+            {
+                SocketFactory = new UdpSocketFactory()
+            };
+
+            // Boot up server.
             Server.StartServer();
+
+            // Boot up a client.
             Client.Connect("localhost");
 
-            TaskRunner = Task.Run(Run);
+            while (true)
+            {
+                try
+                {
+                    if (Server != null && Server.Active)
+                        Server.Update();
+                    if (Client != null && Client.Active)
+                        Client.Update();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+                }
+
+                Thread.Sleep(5);
+            }
         }
 
-        private static async void Run()
+        private static Task Run()
         {
             while (true)
             {
-                Server.Update();
-                Client.Update();
+                try
+                {
+                    if (Server != null && Server.Active)
+                        Server.Update();
+                    if (Client != null && Client.Active)
+                        Client.Update();
 
-                await Task.Delay(5);
+                    Console.WriteLine("Looping Task");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+                }
+
+                Thread.Sleep(5);
             }
         }
     }

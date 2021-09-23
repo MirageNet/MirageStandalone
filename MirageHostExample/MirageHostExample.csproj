@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -8,7 +8,7 @@
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <Exec Command="$(SolutionDir)\Weaver\bin\Debug\net5.0\Weaver.exe $(TargetPath)" />
   </Target>
-
+  
   <ItemGroup>
     <ProjectReference Include="..\Mirage\Mirage.csproj" />
   </ItemGroup>

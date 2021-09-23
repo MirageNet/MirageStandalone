@@ -13,10 +13,14 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Weaver", "Weaver\Weaver.csp
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "WeaverExample", "WeaverExample\WeaverExample.csproj", "{A994E25C-90CB-4CEC-BAAA-820E29AB1EEF}"
+	ProjectSection(ProjectDependencies) = postProject
+		{5199C4D1-37C3-4E85-B31B-910E6D496964} = {5199C4D1-37C3-4E85-B31B-910E6D496964}
+	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MirageHostExample", "MirageHostExample\MirageHostExample.csproj", "{97A81575-12E2-457C-9087-1A10CB684FF4}"
 	ProjectSection(ProjectDependencies) = postProject
 		{9AB16B5A-2A1A-43BA-91F6-4F994462F729} = {9AB16B5A-2A1A-43BA-91F6-4F994462F729}
+		{5199C4D1-37C3-4E85-B31B-910E6D496964} = {5199C4D1-37C3-4E85-B31B-910E6D496964}
 	EndProjectSection
 EndProject
 Global

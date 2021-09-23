@@ -9,7 +9,6 @@ namespace Mirage.Weaver
         static void Main(string[] args)
         {
             string dllPath = args[0];
-            // todo get references and defines
 
             var compiledAssembly = new CompiledAssembly2(dllPath, new string[0], new string[0]);
             var weaverLogger = new WeaverLogger();
