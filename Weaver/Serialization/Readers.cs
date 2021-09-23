@@ -18,17 +18,17 @@ namespace Mirage.Weaver
         protected override Expression<Action> ListExpression => () => CollectionExtensions.ReadList<byte>(default);
         protected override Expression<Action> NullableExpression => () => SystemTypesExtensions.ReadNullable<byte>(default);
 
-        //protected override MethodReference GetNetworkBehaviourFunction(TypeReference typeReference)
-        //{
-        //    ReadMethod readMethod = GenerateReaderFunction(typeReference);
-        //    ILProcessor worker = readMethod.worker;
+        protected override MethodReference GetNetworkBehaviourFunction(TypeReference typeReference)
+        {
+            ReadMethod readMethod = GenerateReaderFunction(typeReference);
+            ILProcessor worker = readMethod.worker;
 
-        //    worker.Append(worker.Create(OpCodes.Ldarg_0));
-        //    worker.Append(worker.Create<NetworkReader>(OpCodes.Call, (reader) => reader.ReadNetworkBehaviour()));
-        //    worker.Append(worker.Create(OpCodes.Castclass, typeReference));
-        //    worker.Append(worker.Create(OpCodes.Ret));
-        //    return readMethod.definition;
-        //}
+            worker.Append(worker.Create(OpCodes.Ldarg_0));
+            worker.Append(worker.Create<NetworkReader>(OpCodes.Call, (reader) => reader.ReadNetworkBehaviour()));
+            worker.Append(worker.Create(OpCodes.Castclass, typeReference));
+            worker.Append(worker.Create(OpCodes.Ret));
+            return readMethod.definition;
+        }
 
         protected override MethodReference GenerateEnumFunction(TypeReference typeReference)
         {
@@ -207,8 +207,8 @@ namespace Mirage.Weaver
                 OpCode opcode = type.IsValueType ? OpCodes.Ldloca : OpCodes.Ldloc;
                 worker.Append(worker.Create(opcode, 0));
 
-                //ValueSerializer valueSerialize = ValueSerializerFinder.GetSerializer(module, field, null, this);
-                //valueSerialize.AppendRead(module, worker, readMethod.readParameter, field.FieldType);
+                ValueSerializer valueSerialize = ValueSerializerFinder.GetSerializer(module, field, null, this);
+                valueSerialize.AppendRead(module, worker, readMethod.readParameter, field.FieldType);
 
                 FieldReference fieldRef = module.ImportReference(field);
                 worker.Append(worker.Create(OpCodes.Stfld, fieldRef));

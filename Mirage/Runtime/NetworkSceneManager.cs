@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Mirage.Logging;
+using UnityEngine;
 using InvalidEnumArgumentException = System.ComponentModel.InvalidEnumArgumentException;
 
 namespace Mirage
@@ -15,7 +16,7 @@ namespace Mirage
     /// </summary>
     //    [AddComponentMenu("Network/NetworkSceneManager")]
     //    [DisallowMultipleComponent]
-    public class NetworkSceneManager : MonoBehaviour, INetworkSceneManager
+    public class NetworkSceneManager : MonoBehaviour//, INetworkSceneManager
     {
         #region Fields
 

@@ -12,24 +12,24 @@ namespace Mirage
 
     public interface IClientObjectManager
     {
-//        NetworkIdentity GetPrefab(Guid assetId);
+        NetworkIdentity GetPrefab(Guid assetId);
 
-//        void RegisterPrefab(NetworkIdentity identity);
+        void RegisterPrefab(NetworkIdentity identity);
 
-//        void RegisterPrefab(NetworkIdentity identity, Guid newAssetId);
+        void RegisterPrefab(NetworkIdentity identity, Guid newAssetId);
 
-//        void RegisterPrefab(NetworkIdentity identity, SpawnHandlerDelegate spawnHandler, UnSpawnDelegate unspawnHandler);
+        void RegisterPrefab(NetworkIdentity identity, SpawnHandlerDelegate spawnHandler, UnSpawnDelegate unspawnHandler);
 
-//        void UnregisterPrefab(NetworkIdentity identity);
+        void UnregisterPrefab(NetworkIdentity identity);
 
-//        void RegisterSpawnHandler(Guid assetId, SpawnHandlerDelegate spawnHandler, UnSpawnDelegate unspawnHandler);
+        void RegisterSpawnHandler(Guid assetId, SpawnHandlerDelegate spawnHandler, UnSpawnDelegate unspawnHandler);
 
-//        void UnregisterSpawnHandler(Guid assetId);
+        void UnregisterSpawnHandler(Guid assetId);
 
-//        void ClearSpawners();
+        void ClearSpawners();
 
-//        void DestroyAllClientObjects();
+        void DestroyAllClientObjects();
 
-//        void PrepareToSpawnSceneObjects();
+        void PrepareToSpawnSceneObjects();
     }
 }

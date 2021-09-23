@@ -90,9 +90,9 @@ namespace Mirage.Weaver
         /// <returns></returns>
         static bool IgnoreMethod(MethodDefinition md)
         {
-            return md.Name == ".cctor"; //||
-                //md.Name == NetworkBehaviourProcessor.ProcessedFunctionName ||
-               // md.Name.StartsWith(RpcProcessor.InvokeRpcPrefix);
+            return md.Name == ".cctor" ||
+            md.Name == NetworkBehaviourProcessor.ProcessedFunctionName ||
+            md.Name.StartsWith(RpcProcessor.InvokeRpcPrefix);
         }
 
         void ProcessMethodAttributes(MethodDefinition md, FoundType foundType)

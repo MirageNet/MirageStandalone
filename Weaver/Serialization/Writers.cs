@@ -18,12 +18,12 @@ namespace Mirage.Weaver
         protected override Expression<Action> ListExpression => () => CollectionExtensions.WriteList<byte>(default, default);
         protected override Expression<Action> NullableExpression => () => SystemTypesExtensions.WriteNullable<byte>(default, default);
 
-        //protected override MethodReference GetNetworkBehaviourFunction(TypeReference typeReference)
-        //{
-        //    MethodReference writeFunc = module.ImportReference<NetworkWriter>((nw) => nw.WriteNetworkBehaviour(default));
-        //    Register(typeReference, writeFunc);
-        //    return writeFunc;
-        //}
+        protected override MethodReference GetNetworkBehaviourFunction(TypeReference typeReference)
+        {
+            MethodReference writeFunc = module.ImportReference<NetworkWriter>((nw) => nw.WriteNetworkBehaviour(default));
+            Register(typeReference, writeFunc);
+            return writeFunc;
+        }
 
         protected override MethodReference GenerateEnumFunction(TypeReference typeReference)
         {
@@ -120,16 +120,16 @@ namespace Mirage.Weaver
         /// <param name="type"></param>
         /// <par
         /// <returns>false if fail</returns>
-        //void WriteAllFields(TypeReference type, WriteMethod writerFunc)
-        //{
-        //    // create copy here because we might add static packer field
-        //    System.Collections.Generic.IEnumerable<FieldDefinition> fields = type.FindAllPublicFields();
-        //    foreach (FieldDefinition field in fields)
-        //    {
-        //        ValueSerializer valueSerialize = ValueSerializerFinder.GetSerializer(module, field, this, null);
-        //        valueSerialize.AppendWriteField(module, writerFunc.worker, writerFunc.writerParameter, writerFunc.typeParameter, field);
-        //    }
-        //}
+        void WriteAllFields(TypeReference type, WriteMethod writerFunc)
+        {
+            // create copy here because we might add static packer field
+            System.Collections.Generic.IEnumerable<FieldDefinition> fields = type.FindAllPublicFields();
+            foreach (FieldDefinition field in fields)
+            {
+                ValueSerializer valueSerialize = ValueSerializerFinder.GetSerializer(module, field, this, null);
+                valueSerialize.AppendWriteField(module, writerFunc.worker, writerFunc.writerParameter, writerFunc.typeParameter, field);
+            }
+        }
 
         protected override MethodReference GenerateSegmentFunction(TypeReference typeReference, TypeReference elementType)
         {

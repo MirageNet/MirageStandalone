@@ -4,6 +4,7 @@ using System.Linq;
 using Mirage.Logging;
 using Mirage.RemoteCalls;
 using Mirage.Serialization;
+using UnityEngine;
 
 namespace Mirage
 {
@@ -33,7 +34,7 @@ namespace Mirage
     /// Objects are spawned with ServerObjectManager.Spawn() which adds them to this set, and makes them be created on clients.
     /// Spawned objects are removed automatically when they are destroyed, or than they can be removed from the spawned set by calling ServerObjectManager.UnSpawn() - this does not destroy the object.</para>
     /// </remarks>
-    public class ServerObjectManager : MonoBehaviour, IServerObjectManager
+    public class ServerObjectManager : MonoBehaviour//, IServerObjectManager
     {
         static readonly ILogger logger = LogFactory.GetLogger(typeof(ServerObjectManager));
 

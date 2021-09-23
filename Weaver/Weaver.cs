@@ -3,6 +3,7 @@ using Mono.Cecil.Cil;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using UnityEngine;
 using ConditionalAttribute = System.Diagnostics.ConditionalAttribute;
 
 namespace Mirage.Weaver
@@ -68,15 +69,14 @@ namespace Mirage.Weaver
                     modified |= attributeProcessor.ProcessTypes(foundTypes);
                 }
 
-                //using (timer.Sample("WeaveNetworkBehavior"))
-                //{
-                //    foreach (FoundType foundType in foundTypes)
-                //    {
-                //        if (foundType.IsNetworkBehaviour)
-                //            modified |= WeaveNetworkBehavior(foundType);
-                //    }
-                //}
-
+                using (timer.Sample("WeaveNetworkBehavior"))
+                {
+                    foreach (FoundType foundType in foundTypes)
+                    {
+                        if (foundType.IsNetworkBehaviour)
+                            modified |= WeaveNetworkBehavior(foundType);
+                    }
+                }
 
                 if (modified)
                 {
@@ -174,21 +174,21 @@ namespace Mirage.Weaver
             foundTypes.Add(new FoundType(type, isNetworkBehaviour, isMonoBehaviour));
         }
 
-        //bool WeaveNetworkBehavior(FoundType foundType)
-        //{
-        //    List<TypeDefinition> behaviourClasses = FindAllBaseTypes(foundType);
+        bool WeaveNetworkBehavior(FoundType foundType)
+        {
+            List<TypeDefinition> behaviourClasses = FindAllBaseTypes(foundType);
 
-        //    bool modified = false;
-        //    // process this and base classes from parent to child order
-        //    for (int i = behaviourClasses.Count - 1; i >= 0; i--)
-        //    {
-        //        TypeDefinition behaviour = behaviourClasses[i];
-        //        if (NetworkBehaviourProcessor.WasProcessed(behaviour)) { continue; }
+            bool modified = false;
+            // process this and base classes from parent to child order
+            for (int i = behaviourClasses.Count - 1; i >= 0; i--)
+            {
+                TypeDefinition behaviour = behaviourClasses[i];
+                if (NetworkBehaviourProcessor.WasProcessed(behaviour)) { continue; }
 
-        //        modified |= new NetworkBehaviourProcessor(behaviour, readers, writers, propertySiteProcessor, logger).Process();
-        //    }
-        //    return modified;
-        //}
+                modified |= new NetworkBehaviourProcessor(behaviour, readers, writers, propertySiteProcessor, logger).Process();
+            }
+            return modified;
+        }
 
         /// <summary>
         /// Returns all base types that are between the type and NetworkBehaviour

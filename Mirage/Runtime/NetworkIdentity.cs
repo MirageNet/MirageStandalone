@@ -5,6 +5,7 @@ using Mirage.RemoteCalls;
 using Mirage.Logging;
 using Mirage.Serialization;
 using Mirage.Events;
+using UnityEngine;
 
 namespace Mirage
 {
@@ -226,7 +227,7 @@ namespace Mirage
             {
                 if (visibilityCache is null)
                 {
-                    //visibilityCache = GetComponent<NetworkVisibility>();
+                    visibilityCache = GetComponent<NetworkVisibility>();
                 }
                 return visibilityCache;
             }

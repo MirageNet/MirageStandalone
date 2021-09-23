@@ -147,10 +147,10 @@ namespace Mirage.Weaver
                 return GenerateEnumFunction(typeReference);
             }
 
-            //if (typeDefinition.IsDerivedFrom<NetworkBehaviour>())
-            //{
-            //    return GetNetworkBehaviourFunction(typeReference);
-            //}
+            if (typeDefinition.IsDerivedFrom<NetworkBehaviour>())
+            {
+                return GetNetworkBehaviourFunction(typeReference);
+            }
 
             //// unity base types are invalid
             //if (typeDefinition.IsDerivedFrom<UnityEngine.Component>())
@@ -190,7 +190,7 @@ namespace Mirage.Weaver
             return new SerializeFunctionException($"Cannot generate {FunctionTypeLog} for {reasonStr}{typeReference.Name}. Use a supported type or provide a custom {FunctionTypeLog}", typeReference);
         }
 
-        //protected abstract MethodReference GetNetworkBehaviourFunction(TypeReference typeReference);
+        protected abstract MethodReference GetNetworkBehaviourFunction(TypeReference typeReference);
 
 
         protected abstract MethodReference GenerateEnumFunction(TypeReference typeReference);

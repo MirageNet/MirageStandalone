@@ -6,8 +6,6 @@ using Mirage.Sockets.Udp;
 
 namespace MirageHostExample
 {
-    [NetworkMessage]
-    public struct HelloMessage { }
     internal class Program
     {
         static NetworkServer Server;
@@ -38,9 +36,9 @@ namespace MirageHostExample
             {
                 try
                 {
-                    if (Server != null && Server.Active)
+                    if (Server is { Active: true })
                         Server.Update();
-                    if (Client != null && Client.Active)
+                    if (Client is { Active: true })
                         Client.Update();
                 }
                 catch (Exception ex)
@@ -58,9 +56,9 @@ namespace MirageHostExample
             {
                 try
                 {
-                    if (Server != null && Server.Active)
+                    if (Server is { Active: true })
                         Server.Update();
-                    if (Client != null && Client.Active)
+                    if (Client is { Active: true })
                         Client.Update();
 
                     Console.WriteLine("Looping Task");
