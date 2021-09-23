@@ -275,7 +275,7 @@ namespace Mirage
             if (!IsLocalClient && Active && connectState == ConnectState.Connected)
             {
                 // only update things while connected
-                //World.Time.UpdateClient(this);
+                World.Time.UpdateClient(this);
             }
             peer?.Update();
         }

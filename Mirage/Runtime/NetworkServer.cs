@@ -230,11 +230,6 @@ namespace Mirage
             }
         }
 
-        public void StartOfflineMode()
-        {
-
-        }
-
         void ThrowIfActive()
         {
             if (Active) throw new InvalidOperationException("Server is already active");
@@ -267,7 +262,7 @@ namespace Mirage
         public void Update()
         {
             peer?.Update();
-            //SyncVarSender?.Update();
+            SyncVarSender?.Update();
         }
 
         private void Peer_OnConnected(IConnection conn)
@@ -316,7 +311,7 @@ namespace Mirage
             //_stopped.Reset();
 
             World = null;
-            //SyncVarSender = null;
+            SyncVarSender = null;
 
             //Application.quitting -= Stop;
 
@@ -496,8 +491,8 @@ namespace Mirage
 
             Disconnected?.Invoke(player);
 
-            //player.DestroyOwnedObjects();
-            //player.Identity = null;
+            player.DestroyOwnedObjects();
+            player.Identity = null;
 
             if (player == LocalPlayer)
                 LocalPlayer = null;
