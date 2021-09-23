@@ -84,7 +84,7 @@ namespace Mirage.Weaver
             if (!typeReference.Resolve().IsValueType)
                 WriteNullCheck(worker);
 
-            //WriteAllFields(typeReference, writerFunc);
+            WriteAllFields(typeReference, writerFunc);
 
             worker.Append(worker.Create(OpCodes.Ret));
             return writerFunc.definition;
