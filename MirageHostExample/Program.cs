@@ -1,8 +1,7 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
-using System.Threading.Tasks;
 using Mirage;
 using Mirage.Sockets.Udp;
 using UnityEngine;
@@ -55,28 +54,6 @@ namespace MirageHostExample
                         Server.Update();
                     if (Client is { Active: true })
                         Client.Update();
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex);
-                }
-
-                Thread.Sleep(5);
-            }
-        }
-
-        private static Task Run()
-        {
-            while (true)
-            {
-                try
-                {
-                    if (Server is { Active: true })
-                        Server.Update();
-                    if (Client is { Active: true })
-                        Client.Update();
-
-                    Console.WriteLine("Looping Task");
                 }
                 catch (Exception ex)
                 {
