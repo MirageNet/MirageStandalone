@@ -1,6 +1,6 @@
+using Mono.Cecil;
 using System;
 using System.Linq;
-using Mono.Cecil;
 
 namespace Mirage.Weaver
 {
@@ -174,7 +174,9 @@ namespace Mirage.Weaver
 
                 try
                 {
-                    parent = parent.Resolve().BaseType;
+                    TypeDefinition resolved = parent.Resolve();
+                    if (resolved == null) { return false; }
+                    parent = resolved.BaseType;
                 }
                 catch
                 {
