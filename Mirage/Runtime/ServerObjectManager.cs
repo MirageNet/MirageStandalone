@@ -606,6 +606,10 @@ namespace Mirage
 
         internal bool ValidateSceneObject(NetworkIdentity identity)
         {
+            //TODO: allows fake objects to get skipped here
+            if(identity == null)
+                return false;
+
             if (identity.gameObject.hideFlags == HideFlags.NotEditable ||
                 identity.gameObject.hideFlags == HideFlags.HideAndDontSave)
                 return false;
