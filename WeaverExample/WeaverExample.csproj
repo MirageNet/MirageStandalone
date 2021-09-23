@@ -6,6 +6,7 @@
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <Exec Command="$(SolutionDir)\Weaver\bin\Debug\net5.0\Weaver.exe $(TargetPath)" />
+    <Error Condition="$(ExitCode) == 1" />
   </Target>
 
   <ItemGroup>
