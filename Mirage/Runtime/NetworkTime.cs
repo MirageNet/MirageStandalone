@@ -54,14 +54,15 @@ namespace Mirage
 
         internal void UpdateClient(INetworkClient client)
         {
-            if (DateTime.UtcNow.Ticks - lastPingTime >= PingFrequency)
+            long now = stopwatch.ElapsedMilliseconds / 1000;
+            if (now - lastPingTime >= PingFrequency)
             {
                 var pingMessage = new NetworkPingMessage
                 {
                     clientTime = LocalTime()
                 };
                 client.Send(pingMessage, Channel.Unreliable);
-                lastPingTime = DateTime.UtcNow.Ticks;
+                lastPingTime = now;
             }
         }
 
