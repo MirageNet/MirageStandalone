@@ -1,11 +1,17 @@
 ﻿using System;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Mirage;
 using Mirage.Sockets.Udp;
+using UnityEngine;
 
 namespace MirageHostExample
 {
+    [NetworkMessage]
+    public struct HelloMessage {}
+    
     internal class Program
     {
         static NetworkServer Server;
@@ -15,6 +21,15 @@ namespace MirageHostExample
         {
             /// Start our pooling loop for data.
             //_ = Task.Run(Run);
+            Assembly asm = Assembly.GetExecutingAssembly();
+            var methods = asm.GetTypes()
+                .SelectMany(t => t.GetMethods())
+                .Where(m => m.GetCustomAttributes(typeof(RuntimeInitializeOnLoadMethodAttribute), false).Length > 0)
+                .ToArray();
+
+            foreach (var method in methods) {
+                method.Invoke(null, null);
+            }
 
             Server = new NetworkServer
             {
