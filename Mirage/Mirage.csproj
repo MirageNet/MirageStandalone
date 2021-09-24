@@ -21,4 +21,10 @@
     <None Remove="Weaver\**" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Mirage.Logging\Mirage.Logging.csproj" />
+    <ProjectReference Include="..\Mirage.SocketLayer\Mirage.SocketLayer.csproj" />
+    <ProjectReference Include="..\Mirage.Sockets\Mirage.Sockets.csproj" />
+  </ItemGroup>
+
 </Project>
