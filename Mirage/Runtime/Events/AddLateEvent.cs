@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 
 namespace Mirage.Events
 {
@@ -7,17 +8,17 @@ namespace Mirage.Events
     /// </summary>
     /// <remarks>
     /// <para>
-    /// AddLateEvent should be used for time sensitive events where Invoke might be called before the user has chance to add a handler. 
+    /// AddLateEvent should be used for time sensitive events where Invoke might be called before the user has chance to add a handler.
     /// For example Server Started event.
     /// </para>
     /// <para>
-    /// Events that are invoked multiple times, like AuthorityChanged, will have the most recent <see cref="Invoke"/> argument sent to new handler. 
+    /// Events that are invoked multiple times, like AuthorityChanged, will have the most recent <see cref="Invoke"/> argument sent to new handler.
     /// </para>
     /// </remarks>
     /// <example>
     /// This Example shows uses of Event
     /// <code>
-    /// 
+    ///
     /// public class Server : MonoBehaviour
     /// {
     ///     // shows in inspector
@@ -53,12 +54,12 @@ namespace Mirage.Events
     /// public class IntUnityEvent : UnityEvent&lt;int&gt; { }
     /// [Serializable]
     /// public class IntAddLateEvent : AddLateEvent&lt;int, IntUnityEvent&gt; { }
-    /// 
+    ///
     /// public class MyClass : MonoBehaviour
     /// {
     ///     [SerializeField]
     ///     private IntAddLateEvent customEvent;
-    /// 
+    ///
     ///     public IAddLateEvent&lt;int&gt; CustomEvent => customEvent;
     /// }
     /// </code>
@@ -66,9 +67,10 @@ namespace Mirage.Events
     [Serializable]
     public sealed class AddLateEvent : AddLateEventBase, IAddLateEvent
     {
-        private Action _event;
+        //[SerializeField]
+        UnityEvent _event = new UnityEvent();
 
-        protected override Action baseEvent => _event;
+        protected override UnityEventBase baseEvent => _event;
 
         public void AddListener(Action handler)
         {
@@ -79,12 +81,12 @@ namespace Mirage.Events
             }
 
             // add handler to inner event so that it can be invoked again
-            _event +=  handler;
+            _event.AddListener(handler);
         }
 
         public void RemoveListener(Action handler)
         {
-            handler = null;
+            _event.RemoveListener(handler);
         }
 
         public void Invoke()
@@ -103,10 +105,11 @@ namespace Mirage.Events
     /// <typeparam name="TEvent">UnityEvent</typeparam>
     [Serializable]
     public abstract class AddLateEvent<T0, TEvent> : AddLateEventBase, IAddLateEvent<T0>
-        where TEvent : Delegate, new()
+        where TEvent : UnityEvent<T0>, new()
     {
+        //[SerializeField]
         TEvent _event = new TEvent();
-        protected override Delegate baseEvent => _event;
+        protected override UnityEventBase baseEvent => _event;
 
         T0 arg0;
 
@@ -119,7 +122,7 @@ namespace Mirage.Events
             }
 
             // add handler to inner event so that it can be invoked again
-            _event += handler;
+            _event.AddListener(handler);
         }
 
         public void RemoveListener(Action<T0> handler)
@@ -144,10 +147,11 @@ namespace Mirage.Events
     /// <typeparam name="T1"></typeparam>
     [Serializable]
     public abstract class AddLateEvent<T0, T1, TEvent> : AddLateEventBase, IAddLateEvent<T0, T1>
-        where TEvent : Delegate, new()
+        where TEvent : UnityEvent<T0, T1>, new()
     {
+        //[SerializeField]
         TEvent _event = new TEvent();
-        protected override Delegate baseEvent => _event;
+        protected override UnityEventBase baseEvent => _event;
 
         T0 arg0;
         T1 arg1;

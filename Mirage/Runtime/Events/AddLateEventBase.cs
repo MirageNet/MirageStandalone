@@ -1,11 +1,10 @@
-using System;
-
+using UnityEngine;
 
 namespace Mirage.Events
 {
     public abstract class AddLateEventBase
     {
-        protected abstract Delegate baseEvent { get; }
+        protected abstract UnityEventBase baseEvent { get; }
         protected bool hasInvoked { get; private set; }
 
         protected void MarkInvoked()
@@ -27,7 +26,7 @@ namespace Mirage.Events
         /// </summary>
         public void RemoveAllListeners()
         {
-            baseEvent = null;
+            baseEvent.RemoveAllListeners();
         }
     }
 }
