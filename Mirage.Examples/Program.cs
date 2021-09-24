@@ -18,7 +18,7 @@ namespace MirageHostExample
 
             MethodInfo[] methods = asm.GetTypes()
                 .SelectMany(t => t.GetMethods())
-                .Where(m => m.GetCustomAttributes(typeof(RuntimeInitializeOnLoadMethodAttribute), false).Length > 0)
+                .Where(m => m.GetCustomAttributes(typeof(Attributes.RuntimeInitializeOnLoadMethodAttribute), false).Length > 0)
                 .ToArray();
 
             foreach (MethodInfo method in methods)

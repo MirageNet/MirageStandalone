@@ -40,7 +40,7 @@ namespace UnityEngine
             m_Y = y;
         }
 
-#region Implementation of IEquatable<Vector2Int>
+        #region Implementation of IEquatable<Vector2Int>
 
         /// <summary>Indicates whether the current object is equal to another object of the same type.</summary>
         /// <param name="other">An object to compare with this object.</param>
@@ -53,7 +53,7 @@ namespace UnityEngine
 
 #endregion
 
-#region Implementation of IFormattable
+        #region Implementation of IFormattable
 
         /// <summary>Formats the value of the current instance using the specified format.</summary>
         /// <param name="format">The format to use.
@@ -68,7 +68,7 @@ namespace UnityEngine
             return $"({x.ToString(format, formatProvider)}, {y.ToString(format, formatProvider)})";
         }
 
-#endregion
+        #endregion
     }
 }
 #endif
