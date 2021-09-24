@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Mirage.Events;
 using Mirage.Logging;
 using Mirage.Serialization;
 using Mirage.SocketLayer;
@@ -29,8 +30,6 @@ namespace Mirage
         /// The maximum number of concurrent network connections to support.
         /// <para>This field is only used if the <see cref="PeerConfig"/> property is null</para>
         /// </summary>
-        //[Tooltip("Maximum number of concurrent connections.")]
-        //[Min(1)]
         public int MaxConnections = 4;
 
         public bool DisconnectOnException = true;
@@ -41,17 +40,13 @@ namespace Mirage
         /// </summary>
         public bool Listening = true;
 
-        //[Tooltip("Creates Socket for Peer to use")]
         public SocketFactory SocketFactory;
 
         Peer peer;
 
-        //[Tooltip("Authentication component attached to this object")]
         public NetworkAuthenticator authenticator;
 
-        //[Header("Events")]
-        //[SerializeField] 
-        //AddLateEvent _started = new AddLateEvent();
+        AddLateEvent _started = new AddLateEvent();
         /// <summary>
         /// This is invoked when a server is started - including when a host is started.
         /// </summary>
@@ -60,44 +55,37 @@ namespace Mirage
         /// <summary>
         /// Event fires once a new Client has connect to the Server.
         /// </summary>
-        //[FormerlySerializedAs("Connected")]
-        //[FoldoutEvent, SerializeField]
-        //NetworkPlayerEvent _connected = new NetworkPlayerEvent();
+        NetworkPlayerEvent _connected = new NetworkPlayerEvent();
+
         public Action<INetworkPlayer> Connected { get; set; }
 
         /// <summary>
         /// Event fires once a new Client has passed Authentication to the Server.
         /// </summary>
-        //[FormerlySerializedAs("Authenticated")]
-        //[FoldoutEvent, SerializeField]
-        //NetworkPlayerEvent _authenticated = new NetworkPlayerEvent();
+        NetworkPlayerEvent _authenticated = new NetworkPlayerEvent();
+
         public Action<INetworkPlayer> Authenticated { get; set; }
 
         /// <summary>
         /// Event fires once a Client has Disconnected from the Server.
         /// </summary>
-        //[FormerlySerializedAs("Disconnected")]
-        //[FoldoutEvent, SerializeField]
-        //NetworkPlayerEvent _disconnected = new NetworkPlayerEvent();
+        NetworkPlayerEvent _disconnected = new NetworkPlayerEvent();
         public Action<INetworkPlayer> Disconnected { get; set; }
 
-        //[SerializeField]
-        //AddLateEvent _stopped = new AddLateEvent();
+        AddLateEvent _stopped = new AddLateEvent();
         public Action Stopped { get; set; }
 
         /// <summary>
         /// This is invoked when a host is started.
         /// <para>StartHost has multiple signatures, but they all cause this hook to be called.</para>
         /// </summary>
-        //[SerializeField] 
-        //AddLateEvent _onStartHost = new AddLateEvent();
+        AddLateEvent _onStartHost = new AddLateEvent();
         public Action OnStartHost { get; set; }
 
         /// <summary>
         /// This is called when a host is stopped.
         /// </summary>
-        //[SerializeField] 
-        //AddLateEvent _onStopHost = new AddLateEvent();
+        AddLateEvent _onStopHost = new AddLateEvent();
         public Action OnStopHost { get; set; }
 
         /// <summary>
@@ -168,6 +156,7 @@ namespace Mirage
 
             Cleanup();
 
+            //TODO Fix application quit event.
             // remove listen when server is stopped so that 
             //Application.quitting -= Stop;
         }
@@ -185,13 +174,13 @@ namespace Mirage
             ThrowIfSocketIsMissing();
 
             //Application.quitting += Stop;
-            if (logger.LogEnabled()) logger.Log($"NetworkServer Created, Mirage version: ");//{ Version.Current}");
+            if (logger.LogEnabled()) logger.Log($"NetworkServer Created, Mirage version: { Version.Current}");
 
             logger.Assert(Players.Count == 0, "Player should have been reset since previous session");
             logger.Assert(connections.Count == 0, "Connections should have been reset since previous session");
 
             World = new NetworkWorld();
-            //SyncVarSender = new SyncVarSender();
+            SyncVarSender = new SyncVarSender();
 
             LocalClient = localClient;
             MessageHandler = new MessageHandler(DisconnectOnException);
@@ -237,8 +226,8 @@ namespace Mirage
 
         void ThrowIfSocketIsMissing()
         {
-            if (SocketFactory is null)
-                SocketFactory = new UdpSocketFactory();
+            SocketFactory ??= new UdpSocketFactory();
+
             if (SocketFactory == null)
                 throw new InvalidOperationException($"{nameof(SocketFactory)} could not be found for {nameof(NetworkServer)}");
         }
@@ -305,14 +294,15 @@ namespace Mirage
             Stopped?.Invoke();
             Active = false;
 
-            //_started.Reset();
-            //_onStartHost.Reset();
-            //_onStopHost.Reset();
-            //_stopped.Reset();
+            _started.Reset();
+            _onStartHost.Reset();
+            _onStopHost.Reset();
+            _stopped.Reset();
 
             World = null;
             SyncVarSender = null;
 
+            //TODO fix application quit event.
             //Application.quitting -= Stop;
 
             if (peer != null)

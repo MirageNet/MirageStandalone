@@ -240,7 +240,7 @@ namespace Mirage.Weaver
                 "InitReadWriters",
                 Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static);
 
-            ConstructorInfo attributeconstructor = typeof(Attributes.RuntimeInitializeOnLoadMethodAttribute).GetConstructor(new[] { typeof(RuntimeInitializeLoadType) });
+            ConstructorInfo attributeconstructor = typeof(RuntimeInitializeOnLoadMethodAttribute).GetConstructor(new[] { typeof(RuntimeInitializeLoadType) });
 
             var customAttributeRef = new CustomAttribute(module.ImportReference(attributeconstructor));
             customAttributeRef.ConstructorArguments.Add(new CustomAttributeArgument(module.ImportReference<RuntimeInitializeLoadType>(), RuntimeInitializeLoadType.BeforeSceneLoad));
