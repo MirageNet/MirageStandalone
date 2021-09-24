@@ -9,7 +9,7 @@ namespace MirageHostExample
 {
     [NetworkMessage]
     public struct HelloMessage {}
-    
+
     internal class Program
     {
         static void Main(string[] args)
