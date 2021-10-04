@@ -1,8 +1,5 @@
 using System.Collections.Generic;
-#if !NETCOREAPP
 using UnityEngine;
-
-#endif
 
 namespace Mirage.Logging
 {
@@ -30,12 +27,10 @@ namespace Mirage.Logging
 #if NETCOREAPP
             logger = new StandaloneLogger();
 #else
-            logger = new Logger(Debug.unityLogger)
-            {
-                // by default, log warnings and up
-                filterLogType = defaultLogLevel
-            };
+            logger = new Logger(Debug.unityLogger);
 #endif
+            // by default, log warnings and up
+            logger.filterLogType = defaultLogLevel;
 
             loggers[loggerName] = logger;
             return logger;

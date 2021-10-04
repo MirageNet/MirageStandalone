@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using Mirage.Logging;
 using Mirage.SocketLayer;
+using UnityEngine;
 
 namespace Mirage.Sockets.Udp
 {
@@ -42,9 +43,9 @@ namespace Mirage.Sockets.Udp
             {
                 //if (Application.platform != RuntimePlatform.WindowsPlayer && Application.platform != RuntimePlatform.WindowsEditor)
                 //{
-                    // IOControl only seems to work on windows
-                    // gives "SocketException: The descriptor is not a socket" when running on github action on Linux
-                    // see https://github.com/mono/mono/blob/f74eed4b09790a0929889ad7fc2cf96c9b6e3757/mcs/class/System/System.Net.Sockets/Socket.cs#L2763-L2765
+                // IOControl only seems to work on windows
+                // gives "SocketException: The descriptor is not a socket" when running on github action on Linux
+                // see https://github.com/mono/mono/blob/f74eed4b09790a0929889ad7fc2cf96c9b6e3757/mcs/class/System/System.Net.Sockets/Socket.cs#L2763-L2765
                 //    return;
                 //}
 
@@ -62,7 +63,7 @@ namespace Mirage.Sockets.Udp
             }
             catch (Exception e)
             {
-                logger.LogError(logger, "Exception setting IOControl");
+                logger.LogError("Exception setting IOControl");
                 logger.LogException(e);
             }
         }

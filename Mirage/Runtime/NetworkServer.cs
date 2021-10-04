@@ -5,6 +5,7 @@ using Mirage.Logging;
 using Mirage.Serialization;
 using Mirage.SocketLayer;
 using Mirage.Sockets.Udp;
+using UnityEngine;
 
 namespace Mirage
 {

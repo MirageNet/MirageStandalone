@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using UnityEngine;
+
 namespace Mirage.Logging
 {
     public class LogSettings

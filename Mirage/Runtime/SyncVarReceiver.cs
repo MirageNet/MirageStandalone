@@ -1,5 +1,6 @@
 using Mirage.Logging;
 using Mirage.Serialization;
+using UnityEngine;
 
 namespace Mirage
 {
