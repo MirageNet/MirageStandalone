@@ -8,23 +8,13 @@ using UnityEngine;
 namespace MirageHostExample
 {
     [NetworkMessage]
-    public struct HelloMessage {}
+    public struct HelloMessage { }
 
     internal class Program
     {
         static void Main(string[] args)
         {
-            var asm = Assembly.GetExecutingAssembly();
-
-            MethodInfo[] methods = asm.GetTypes()
-                .SelectMany(t => t.GetMethods())
-                .Where(m => m.GetCustomAttributes(typeof(RuntimeInitializeOnLoadMethodAttribute), false).Length > 0)
-                .ToArray();
-
-            foreach (MethodInfo method in methods)
-            {
-                method.Invoke(null, null);
-            }
+            RunInitialize();
 
             while (true)
             {
@@ -68,6 +58,21 @@ namespace MirageHostExample
                         Console.WriteLine("Incorrect option selected.");
                         break;
                 }
+            }
+        }
+
+        private static void RunInitialize()
+        {
+            var asm = Assembly.GetExecutingAssembly();
+
+            MethodInfo[] methods = asm.GetTypes()
+                .SelectMany(t => t.GetMethods())
+                .Where(m => m.GetCustomAttributes(typeof(RuntimeInitializeOnLoadMethodAttribute), false).Length > 0)
+                .ToArray();
+
+            foreach (MethodInfo method in methods)
+            {
+                method.Invoke(null, null);
             }
         }
     }
