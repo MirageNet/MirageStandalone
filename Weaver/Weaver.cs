@@ -1,8 +1,8 @@
-using Mono.Cecil;
-using Mono.Cecil.Cil;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Mono.Cecil;
+using Mono.Cecil.Cil;
 using UnityEngine;
 using ConditionalAttribute = System.Diagnostics.ConditionalAttribute;
 
@@ -41,67 +41,52 @@ namespace Mirage.Weaver
         {
             try
             {
-                this.timer = new WeaverDiagnosticsTimer() { writeToFile = true };
-                this.timer.Start(compiledAssembly.Name);
+                timer = new WeaverDiagnosticsTimer() { writeToFile = true };
+                timer.Start(compiledAssembly.Name);
 
-                using (this.timer.Sample("AssemblyDefinitionFor"))
+                using (timer.Sample("AssemblyDefinitionFor"))
                 {
-                    this.CurrentAssembly = AssemblyDefinitionFor(compiledAssembly);
+                    CurrentAssembly = AssemblyDefinitionFor(compiledAssembly);
                 }
 
-                ModuleDefinition module = this.CurrentAssembly.MainModule;
-                this.readers = new Readers(module, this.logger);
-                this.writers = new Writers(module, this.logger);
-                this.propertySiteProcessor = new PropertySiteProcessor();
-                var rwProcessor = new ReaderWriterProcessor(module, this.readers, this.writers);
+                ModuleDefinition module = CurrentAssembly.MainModule;
+                readers = new Readers(module, logger);
+                writers = new Writers(module, logger);
+                propertySiteProcessor = new PropertySiteProcessor();
+                var rwProcessor = new ReaderWriterProcessor(module, readers, writers);
 
                 bool modified = false;
-                using (this.timer.Sample("ReaderWriterProcessor"))
+                using (timer.Sample("ReaderWriterProcessor"))
                 {
                     modified = rwProcessor.Process();
                 }
 
-                IReadOnlyList<FoundType> foundTypes = this.FindAllClasses(module);
-
-                using (this.timer.Sample("AttributeProcessor"))
-                {
-                    var attributeProcessor = new AttributeProcessor(module, this.logger);
-                    modified |= attributeProcessor.ProcessTypes(foundTypes);
-                }
-
-                using (timer.Sample("WeaveNetworkBehavior"))
-                {
-                    foreach (FoundType foundType in foundTypes)
-                    {
-                        if (foundType.IsNetworkBehaviour)
-                            modified |= WeaveNetworkBehavior(foundType);
-                    }
-                }
+                IReadOnlyList<FoundType> foundTypes = FindAllClasses(module);
 
                 if (modified)
                 {
-                    using (this.timer.Sample("propertySiteProcessor"))
+                    using (timer.Sample("propertySiteProcessor"))
                     {
-                        this.propertySiteProcessor.Process(module);
+                        propertySiteProcessor.Process(module);
                     }
 
-                    using (this.timer.Sample("InitializeReaderAndWriters"))
+                    using (timer.Sample("InitializeReaderAndWriters"))
                     {
                         rwProcessor.InitializeReaderAndWriters();
                     }
                 }
 
-                return this.CurrentAssembly;
+                return CurrentAssembly;
             }
             catch (Exception e)
             {
-                this.logger.Error("Exception :" + e);
+                logger.Error("Exception :" + e);
                 return null;
             }
             finally
             {
                 // end in finally incase it return early
-                this.timer?.End();
+                timer?.End();
             }
         }
 
@@ -130,16 +115,16 @@ namespace Mirage.Weaver
 
         IReadOnlyList<FoundType> FindAllClasses(ModuleDefinition module)
         {
-            using (this.timer.Sample("FindAllClasses"))
+            using (timer.Sample("FindAllClasses"))
             {
                 var foundTypes = new List<FoundType>();
                 foreach (TypeDefinition type in module.Types)
                 {
-                    this.ProcessType(type, foundTypes);
+                    ProcessType(type, foundTypes);
 
                     foreach (TypeDefinition nested in type.NestedTypes)
                     {
-                        this.ProcessType(nested, foundTypes);
+                        ProcessType(nested, foundTypes);
                     }
                 }
 
@@ -152,16 +137,9 @@ namespace Mirage.Weaver
             if (!type.IsClass) return;
 
             TypeReference parent = type.BaseType;
-            bool isNetworkBehaviour = false;
             bool isMonoBehaviour = false;
             while (parent != null)
             {
-                if (parent.Is<NetworkBehaviour>())
-                {
-                    isNetworkBehaviour = true;
-                    isMonoBehaviour = true;
-                    break;
-                }
                 if (parent.Is<MonoBehaviour>())
                 {
                     isMonoBehaviour = true;
@@ -171,47 +149,7 @@ namespace Mirage.Weaver
                 parent = parent.TryResolveParent();
             }
 
-            foundTypes.Add(new FoundType(type, isNetworkBehaviour, isMonoBehaviour));
-        }
-
-        bool WeaveNetworkBehavior(FoundType foundType)
-        {
-            List<TypeDefinition> behaviourClasses = FindAllBaseTypes(foundType);
-
-            bool modified = false;
-            // process this and base classes from parent to child order
-            for (int i = behaviourClasses.Count - 1; i >= 0; i--)
-            {
-                TypeDefinition behaviour = behaviourClasses[i];
-                if (NetworkBehaviourProcessor.WasProcessed(behaviour)) { continue; }
-
-                modified |= new NetworkBehaviourProcessor(behaviour, readers, writers, propertySiteProcessor, logger).Process();
-            }
-            return modified;
-        }
-
-        /// <summary>
-        /// Returns all base types that are between the type and NetworkBehaviour
-        /// </summary>
-        /// <param name="foundType"></param>
-        /// <returns></returns>
-        static List<TypeDefinition> FindAllBaseTypes(FoundType foundType)
-        {
-            var behaviourClasses = new List<TypeDefinition>();
-
-            TypeDefinition type = foundType.TypeDefinition;
-            while (type != null)
-            {
-                if (type.Is<NetworkBehaviour>())
-                {
-                    break;
-                }
-
-                behaviourClasses.Add(type);
-                type = type.BaseType.TryResolve();
-            }
-
-            return behaviourClasses;
+            foundTypes.Add(new FoundType(type, isMonoBehaviour));
         }
     }
 
@@ -219,23 +157,17 @@ namespace Mirage.Weaver
     {
         public readonly TypeDefinition TypeDefinition;
 
-        /// <summary>
-        /// Is Derived From NetworkBehaviour
-        /// </summary>
-        public readonly bool IsNetworkBehaviour;
-
         public readonly bool IsMonoBehaviour;
 
-        public FoundType(TypeDefinition typeDefinition, bool isNetworkBehaviour, bool isMonoBehaviour)
+        public FoundType(TypeDefinition typeDefinition, bool isMonoBehaviour)
         {
-            this.TypeDefinition = typeDefinition;
-            this.IsNetworkBehaviour = isNetworkBehaviour;
-            this.IsMonoBehaviour = isMonoBehaviour;
+            TypeDefinition = typeDefinition;
+            IsMonoBehaviour = isMonoBehaviour;
         }
 
         public override string ToString()
         {
-            return this.TypeDefinition.ToString();
+            return TypeDefinition.ToString();
         }
     }
 }

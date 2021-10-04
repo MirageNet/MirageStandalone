@@ -147,24 +147,19 @@ namespace Mirage.Weaver
                 return GenerateEnumFunction(typeReference);
             }
 
-            if (typeDefinition.IsDerivedFrom<NetworkBehaviour>())
+            // unity base types are invalid
+            if (typeDefinition.IsDerivedFrom<UnityEngine.Component>())
             {
-                return GetNetworkBehaviourFunction(typeReference);
+                throw ThrowCantGenerate(typeReference, "component type");
             }
-
-            //// unity base types are invalid
-            //if (typeDefinition.IsDerivedFrom<UnityEngine.Component>())
-            //{
-            //    throw ThrowCantGenerate(typeReference, "component type");
-            //}
-            //if (typeReference.Is<UnityEngine.Object>())
-            //{
-            //    throw ThrowCantGenerate(typeReference);
-            //}
-            //if (typeReference.Is<UnityEngine.ScriptableObject>())
-            //{
-            //    throw ThrowCantGenerate(typeReference);
-            //}
+            if (typeReference.Is<UnityEngine.Object>())
+            {
+                throw ThrowCantGenerate(typeReference);
+            }
+            if (typeReference.Is<UnityEngine.ScriptableObject>())
+            {
+                throw ThrowCantGenerate(typeReference);
+            }
 
 
             if (typeDefinition.HasGenericParameters)
@@ -189,9 +184,6 @@ namespace Mirage.Weaver
             string reasonStr = string.IsNullOrEmpty(typeDescription) ? string.Empty : $"{typeDescription} ";
             return new SerializeFunctionException($"Cannot generate {FunctionTypeLog} for {reasonStr}{typeReference.Name}. Use a supported type or provide a custom {FunctionTypeLog}", typeReference);
         }
-
-        protected abstract MethodReference GetNetworkBehaviourFunction(TypeReference typeReference);
-
 
         protected abstract MethodReference GenerateEnumFunction(TypeReference typeReference);
         protected abstract MethodReference GenerateCollectionFunction(TypeReference typeReference, TypeReference elementType, Expression<Action> genericExpression);
