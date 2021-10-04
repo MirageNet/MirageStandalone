@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Weaver": {
+      "commandName": "Project",
+      "commandLineArgs": "\"G:\\repos_fast\\MirageStandalone\\MirageHostExample\\bin\\Debug\\net5.0\\MirageHostExample.dll\""
+    }
+  }
+}

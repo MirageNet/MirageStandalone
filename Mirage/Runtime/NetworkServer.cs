@@ -128,7 +128,6 @@ namespace Mirage
         public bool Active { get; private set; }
 
         public NetworkWorld World { get; private set; }
-        public SyncVarSender SyncVarSender { get; private set; }
         public MessageHandler MessageHandler { get; private set; }
 
 
@@ -181,7 +180,6 @@ namespace Mirage
             logger.Assert(connections.Count == 0, "Connections should have been reset since previous session");
 
             World = new NetworkWorld();
-            SyncVarSender = new SyncVarSender();
 
             LocalClient = localClient;
             MessageHandler = new MessageHandler(DisconnectOnException);
@@ -252,7 +250,6 @@ namespace Mirage
         public void Update()
         {
             peer?.Update();
-            SyncVarSender?.Update();
         }
 
         private void Peer_OnConnected(IConnection conn)
@@ -301,7 +298,6 @@ namespace Mirage
             _stopped.Reset();
 
             World = null;
-            SyncVarSender = null;
 
             //TODO fix application quit event.
             //Application.quitting -= Stop;
@@ -481,9 +477,6 @@ namespace Mirage
             RemoveConnection(player);
 
             Disconnected?.Invoke(player);
-
-            player.DestroyOwnedObjects();
-            player.Identity = null;
 
             if (player == LocalPlayer)
                 LocalPlayer = null;

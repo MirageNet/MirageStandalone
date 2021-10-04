@@ -1,4 +1,5 @@
 using System;
+using Mirage.Events;
 using Mirage.Logging;
 using Mirage.Serialization;
 using Mirage.SocketLayer;
@@ -41,15 +42,10 @@ namespace Mirage
         //[Tooltip("Authentication component attached to this object")]
         public NetworkAuthenticator authenticator;
 
-        //[Header("Events")]
-        //[SerializeField]
-        //AddLateEvent _started = new AddLateEvent();
-        //[SerializeField]
-        //NetworkPlayerAddLateEvent _connected = new NetworkPlayerAddLateEvent();
-        //[SerializeField]
-        //NetworkPlayerAddLateEvent _authenticated = new NetworkPlayerAddLateEvent();
-        //[SerializeField]
-        //DisconnectAddLateEvent _disconnected = new DisconnectAddLateEvent();
+        AddLateEvent _started = new AddLateEvent();
+        NetworkPlayerAddLateEvent _connected = new NetworkPlayerAddLateEvent();
+        NetworkPlayerAddLateEvent _authenticated = new NetworkPlayerAddLateEvent();
+        DisconnectAddLateEvent _disconnected = new DisconnectAddLateEvent();
 
         /// <summary>
         /// Event fires when the client starts, before it has connected to the Server.
