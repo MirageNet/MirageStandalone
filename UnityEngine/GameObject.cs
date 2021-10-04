@@ -1,13 +1,11 @@
 using System;
-using System.Numerics;
 
 namespace UnityEngine
 {
-    public class GameObject
+    public class GameObject : Object
     {
         public bool activeSelf;
         public HideFlags hideFlags;
-        public string name;
         public Transform transform;
 
         public void SetActive(bool state)
@@ -16,28 +14,33 @@ namespace UnityEngine
         }
         public void Destroy(GameObject gameObject)
         {
-
+            throw new NotImplementedException();
         }
 
         public void DontDestroyOnLoad(GameObject gameObject)
         {
-
+            throw new NotImplementedException();
         }
 
         public T GetComponent<T>()
         {
+            _ = TryGetComponent(out T component);
+            return component;
+        }
+
+        public bool TryGetComponent<T>(out T component)
+        {
             throw new NotImplementedException();
         }
 
-
         public GameObject Instantiate(GameObject prefab)
         {
-            return prefab;
+            throw new NotImplementedException();
         }
 
         public GameObject Instantiate(GameObject prefab, Vector3 position, Quaternion rotation)
         {
-            return prefab;
+            throw new NotImplementedException();
         }
     }
 }
