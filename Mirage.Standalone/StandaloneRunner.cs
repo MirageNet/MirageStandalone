@@ -2,13 +2,15 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Threading;
 using System.Threading.Tasks;
 using Mirage.Sockets.Udp;
 using UnityEngine;
 
 namespace Mirage.Standalone
 {
+    /// <summary>
+    /// Takes care of running the necessary Mirage environment.
+    /// </summary>
     public class StandaloneRunner
     {
         private readonly List<NetworkServer> servers = new List<NetworkServer>();
