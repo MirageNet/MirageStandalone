@@ -2,8 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
-using Mirage.SocketLayer;
 using Mirage.Sockets.Udp;
 using UnityEngine;
 
@@ -15,11 +15,12 @@ namespace Mirage.Standalone
         private readonly List<NetworkClient> clients = new List<NetworkClient>();
         private readonly List<UdpSocketFactory> socketFactories = new List<UdpSocketFactory>();
 
+        private Action updated;
+
         public StandaloneRunner()
         {
             RunInitializeMethods();
-
-            Task.Factory.StartNew(Update, TaskCreationOptions.LongRunning);
+            Update();
 
             Console.WriteLine("Mirage Standalone Runner initialized");
         }
@@ -32,6 +33,16 @@ namespace Mirage.Standalone
             servers.Add(server);
             socketFactories.Add(socketFactory);
 
+            server.Started += () =>
+            {
+                updated += server.Update;
+            };
+
+            server.Stopped += () =>
+            {
+                updated -= server.Update;
+            };
+
             return server;
         }
 
@@ -43,6 +54,16 @@ namespace Mirage.Standalone
             clients.Add(client);
             socketFactories.Add(socketFactory);
 
+            client.Started += () =>
+            {
+                updated += client.Update;
+            };
+
+            client.Disconnected += (_) =>
+            {
+                updated -= client.Update;
+            };
+
             return client;
         }
 
@@ -52,19 +73,7 @@ namespace Mirage.Standalone
             {
                 try
                 {
-                    foreach (NetworkServer server in servers)
-                    {
-                        if (!server.Active) continue;
-
-                        server.Update();
-                    }
-
-                    foreach (NetworkClient client in clients)
-                    {
-                        if (!client.Active) continue;
-
-                        client.Update();
-                    }
+                    updated?.Invoke();
                 }
                 catch (Exception ex)
                 {
