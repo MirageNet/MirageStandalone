@@ -9,7 +9,7 @@ namespace Mirage.Examples
     {
         #region Fields
 
-        private List<string> arguments;
+        private readonly List<string> arguments;
         private ushort port;
 
         private NetworkServer server;
