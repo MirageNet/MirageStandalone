@@ -13,10 +13,6 @@ namespace Mirage.Standalone
     /// </summary>
     public class StandaloneRunner
     {
-        private readonly List<NetworkServer> servers = new List<NetworkServer>();
-        private readonly List<NetworkClient> clients = new List<NetworkClient>();
-        private readonly List<UdpSocketFactory> socketFactories = new List<UdpSocketFactory>();
-
         private Action updated;
 
         public StandaloneRunner()
@@ -31,9 +27,6 @@ namespace Mirage.Standalone
         {
             var socketFactory = new UdpSocketFactory { Port = port };
             var server = new NetworkServer { SocketFactory = socketFactory };
-
-            servers.Add(server);
-            socketFactories.Add(socketFactory);
 
             server.Started += () =>
             {
@@ -52,9 +45,6 @@ namespace Mirage.Standalone
         {
             var socketFactory = new UdpSocketFactory();
             var client = new NetworkClient { SocketFactory = socketFactory };
-
-            clients.Add(client);
-            socketFactories.Add(socketFactory);
 
             client.Started += () =>
             {
