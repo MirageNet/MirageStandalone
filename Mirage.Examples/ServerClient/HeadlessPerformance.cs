@@ -121,7 +121,7 @@ namespace Mirage.Examples
             spawner.ClientObjectManager = objectManager;
             spawner.SceneManager = networkSceneManager;
             */
-            client.Connect(networkAddress);
+            client.Connect(networkAddress, port);
         }
 
         private string GetArgValue(string name)
