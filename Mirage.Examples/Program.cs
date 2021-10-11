@@ -1,6 +1,6 @@
 using System;
 using Mirage;
-using Mirage.Standalone;
+using Mirage.Examples;
 
 namespace MirageHostExample
 {
@@ -11,12 +11,7 @@ namespace MirageHostExample
     {
         static void Main(string[] args)
         {
-            var runner = new StandaloneRunner();
-            NetworkServer server = runner.AddServer();
-            NetworkClient client = runner.AddClient();
-
-            server.StartServer();
-            client.Connect("localhost");
+            var perf = new HeadlessPerformance(args);
 
             Console.ReadLine();
         }

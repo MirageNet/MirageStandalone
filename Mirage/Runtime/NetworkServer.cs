@@ -97,7 +97,7 @@ namespace Mirage
         public INetworkPlayer LocalPlayer { get; private set; }
 
         /// <summary>
-        /// The host client for this server 
+        /// The host client for this server
         /// </summary>
         public INetworkClient LocalClient { get; private set; }
 
@@ -157,7 +157,7 @@ namespace Mirage
             Cleanup();
 
             //TODO Fix application quit event.
-            // remove listen when server is stopped so that 
+            // remove listen when server is stopped so that
             //Application.quitting -= Stop;
         }
 
