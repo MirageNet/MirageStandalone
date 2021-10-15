@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Mirage.Logging;
 using Mirage.Serialization;
+using UnityEngine;
 
 namespace Mirage.RemoteCalls
 {

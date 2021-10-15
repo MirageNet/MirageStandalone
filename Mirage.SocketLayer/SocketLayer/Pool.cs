@@ -1,5 +1,5 @@
 using System;
-using Mirage.Logging;
+using UnityEngine;
 
 namespace Mirage.SocketLayer
 {

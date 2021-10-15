@@ -165,9 +165,9 @@ namespace Mirage
                     // and GetComponentsInParent(false)[0] isn't allocation free, so
                     // we just drop child support in this specific case
                     //if (gameObject.activeSelf)
-                        //_identity = GetComponentInParent<NetworkIdentity>();
+                    //_identity = GetComponentInParent<NetworkIdentity>();
                     //else
-                       // _identity = GetComponent<NetworkIdentity>();
+                    // _identity = GetComponent<NetworkIdentity>();
 
                     // do this 2nd check inside first if so that we are not checking == twice on unity Object
                     if (_identity is null)
@@ -203,7 +203,7 @@ namespace Mirage
                 }
 
                 // this should never happen
-                logger.LogError("Could not find component in GameObject. You should not add/remove components in networked objects dynamically", this);
+                logger.LogError("Could not find component in GameObject. You should not add/remove components in networked objects dynamically");
 
                 return COMPONENT_INDEX_NOT_FOUND;
             }
