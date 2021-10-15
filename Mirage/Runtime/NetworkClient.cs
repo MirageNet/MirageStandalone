@@ -42,13 +42,13 @@ namespace Mirage
         public NetworkAuthenticator authenticator;
 
         //[Header("Events")]
-        //[SerializeField] 
+        //[SerializeField]
         //AddLateEvent _started = new AddLateEvent();
-        //[SerializeField] 
+        //[SerializeField]
         //NetworkPlayerAddLateEvent _connected = new NetworkPlayerAddLateEvent();
-        //[SerializeField] 
+        //[SerializeField]
         //NetworkPlayerAddLateEvent _authenticated = new NetworkPlayerAddLateEvent();
-        //[SerializeField] 
+        //[SerializeField]
         //DisconnectAddLateEvent _disconnected = new DisconnectAddLateEvent();
 
         /// <summary>
