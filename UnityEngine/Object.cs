@@ -1,4 +1,4 @@
-﻿namespace UnityEngine
+namespace UnityEngine
 {
     public class Object
     {

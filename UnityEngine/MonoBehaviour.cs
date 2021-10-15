@@ -1,7 +1,6 @@
 namespace UnityEngine
 {
-    public class MonoBehaviour : GameObject
+    public class MonoBehaviour : Component
     {
-        public GameObject gameObject;
     }
 }

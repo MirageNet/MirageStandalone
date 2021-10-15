@@ -18,18 +18,6 @@ namespace Mirage.Weaver
         protected override Expression<Action> ListExpression => () => CollectionExtensions.ReadList<byte>(default);
         protected override Expression<Action> NullableExpression => () => SystemTypesExtensions.ReadNullable<byte>(default);
 
-        protected override MethodReference GetNetworkBehaviourFunction(TypeReference typeReference)
-        {
-            ReadMethod readMethod = GenerateReaderFunction(typeReference);
-            ILProcessor worker = readMethod.worker;
-
-            worker.Append(worker.Create(OpCodes.Ldarg_0));
-            worker.Append(worker.Create<NetworkReader>(OpCodes.Call, (reader) => reader.ReadNetworkBehaviour()));
-            worker.Append(worker.Create(OpCodes.Castclass, typeReference));
-            worker.Append(worker.Create(OpCodes.Ret));
-            return readMethod.definition;
-        }
-
         protected override MethodReference GenerateEnumFunction(TypeReference typeReference)
         {
             ReadMethod readMethod = GenerateReaderFunction(typeReference);
