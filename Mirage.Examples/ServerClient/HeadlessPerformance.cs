@@ -13,9 +13,6 @@ namespace Mirage.Examples
         private ushort port;
 
         private NetworkServer server;
-        private ServerObjectManager serverObjectManager;
-        private NetworkSceneManager networkSceneManager;
-        private CharacterSpawner characterSpawner;
         private readonly StandaloneRunner runner;
 
         #endregion
@@ -52,10 +49,6 @@ namespace Mirage.Examples
 
             server = runner.AddServer(port);
             server.MaxConnections = 9999;
-            networkSceneManager = new NetworkSceneManager { Server = server };
-            serverObjectManager = new ServerObjectManager { Server = server, NetworkSceneManager = networkSceneManager };
-            serverObjectManager.Start();
-            characterSpawner = new CharacterSpawner { ServerObjectManager = serverObjectManager, Server = server };
 
             //TODO fix this for listener
             //_server.Started.AddListener(OnServerStarted);
@@ -102,14 +95,6 @@ namespace Mirage.Examples
         void StartClient(int i, string networkAddress)
         {
             NetworkClient client = runner.AddClient();
-
-            var objectManager = new ClientObjectManager();
-            var spawner = new CharacterSpawner();
-            var networkSceneManager = new NetworkSceneManager { Client = client };
-
-            objectManager.Client = client;
-            objectManager.NetworkSceneManager = networkSceneManager;
-            objectManager.Start();
 
             /* TODO Fix this.
             objectManager.RegisterPrefab(MonsterPrefab.GetComponent<NetworkIdentity>());
