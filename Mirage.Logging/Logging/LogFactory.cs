@@ -28,9 +28,10 @@ namespace Mirage.Logging
             logger = new StandaloneLogger();
 #else
             logger = new Logger(Debug.unityLogger);
+            // todo move this filterLogType back out of #if once we have a way to set log levels
+            // by default, log warnings and up
             logger.filterLogType = defaultLogLevel;
 #endif
-            // by default, log warnings and up
 
             loggers[loggerName] = logger;
             return logger;
