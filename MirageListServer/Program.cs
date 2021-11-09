@@ -3,14 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading;
-using Mirage;
 using Mirage.Logging;
 using Mirage.Serialization;
 using Mirage.SocketLayer;
 using Mirage.Sockets.Udp;
 using UnityEngine;
 
-namespace MirageListServer
+namespace Mirage.ListServer.MasterServer
 {
     class Program
     {
@@ -40,7 +39,7 @@ namespace MirageListServer
         {
             _server = new NetworkServer();
             _server.SocketFactory = new UdpSocketFactory();
-            _server.PeerConfig = new Mirage.SocketLayer.Config
+            _server.PeerConfig = new Config
             {
                 MaxConnections = 1000,
             };
@@ -246,7 +245,9 @@ namespace MirageListServer
             return false;
         }
     }
-
+}
+namespace Mirage.ListServer
+{
     /// <summary>
     /// Request to be added to list
     /// </summary>
@@ -287,7 +288,7 @@ namespace MirageListServer
     }
 
     [NetworkMessage]
-    struct GetServersReply
+    public struct GetServersReply
     {
         public Server[] servers;
 
@@ -302,11 +303,107 @@ namespace MirageListServer
         }
     }
 
-
     [NetworkMessage]
     struct Failed
     {
         public string messageName;
         public string reason;
+    }
+}
+
+namespace Mirage.ListServer.Server
+{
+    public class ListServer
+    {
+        static readonly ILogger logger = LogFactory.GetLogger<ListServer>();
+
+        readonly INetworkPlayer _masterServer;
+        readonly int _timeoutSeconds;
+        DateTime _nextUpdated;
+
+        bool _added;
+
+        public ListServer(MessageHandler messageHandler, INetworkPlayer masterServer, int timeoutSeconds)
+        {
+            _masterServer = masterServer;
+            _timeoutSeconds = timeoutSeconds;
+            messageHandler.RegisterHandler<Failed>(FailedHandler);
+        }
+
+        public void Update()
+        {
+            DateTime now = DateTime.Now;
+            if (now > _nextUpdated)
+            {
+                _nextUpdated = now + TimeSpan.FromSeconds(_timeoutSeconds / 5);
+                _masterServer.Send(new KeepAlive(), Channel.Unreliable);
+            }
+        }
+
+        void FailedHandler(INetworkPlayer sender, Failed msg)
+        {
+            logger.LogError($"{msg.messageName} failed: {msg.reason}");
+
+            if (msg.messageName == nameof(Mirage.ListServer.AddServer))
+            {
+                _added = false;
+            }
+        }
+
+
+        public void AddServer()
+        {
+            _added = true;
+            _masterServer.Send(new AddServer()
+            {
+
+            });
+            throw new NotImplementedException();
+        }
+
+        public void UpdateServer()
+        {
+            _masterServer.Send(new UpdateServer()
+            {
+
+            });
+            throw new NotImplementedException();
+        }
+
+        public void RemoveServer()
+        {
+            _added = false;
+            _masterServer.Send(new RemoveServer());
+        }
+    }
+}
+
+namespace Mirage.ListServer.Client
+{
+    public class ListServer
+    {
+        static readonly ILogger logger = LogFactory.GetLogger<ListServer>();
+
+        INetworkPlayer _masterServer;
+
+        public GetServersReply.Server[] Servers { get; private set; }
+        public event Action OnListUpdated;
+
+        public ListServer(MessageHandler messageHandler, INetworkPlayer masterServer)
+        {
+            _masterServer = masterServer;
+            messageHandler.RegisterHandler<GetServersReply>(GetServersReplyHandler);
+        }
+
+        public void GetServerList()
+        {
+            _masterServer.Send(new GetServers());
+        }
+
+        void GetServersReplyHandler(INetworkPlayer sender, GetServersReply msg)
+        {
+            Servers = msg.servers;
+            OnListUpdated.Invoke();
+        }
     }
 }
