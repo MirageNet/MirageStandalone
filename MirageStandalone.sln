@@ -33,6 +33,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Mirage.Sockets", "Mirage.So
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Mirage.Standalone", "Mirage.Standalone\Mirage.Standalone.csproj", "{AA57D607-B187-4964-922E-F312C3DC4792}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MirageListServer", "MirageListServer\MirageListServer.csproj", "{94B730F7-68F9-4A92-A2D7-37BDF7BB9851}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -75,6 +77,10 @@ Global
 		{AA57D607-B187-4964-922E-F312C3DC4792}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AA57D607-B187-4964-922E-F312C3DC4792}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AA57D607-B187-4964-922E-F312C3DC4792}.Release|Any CPU.Build.0 = Release|Any CPU
+		{94B730F7-68F9-4A92-A2D7-37BDF7BB9851}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{94B730F7-68F9-4A92-A2D7-37BDF7BB9851}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{94B730F7-68F9-4A92-A2D7-37BDF7BB9851}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{94B730F7-68F9-4A92-A2D7-37BDF7BB9851}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
