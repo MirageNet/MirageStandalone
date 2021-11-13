@@ -1,10 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
+using System;
 using System.Threading.Tasks;
 using Mirage.Sockets.Udp;
-using UnityEngine;
 
 namespace Mirage.Standalone
 {
@@ -17,7 +13,7 @@ namespace Mirage.Standalone
 
         public StandaloneRunner()
         {
-            RunInitializeMethods();
+            InitializeReadWrite.RunMethods();
             Update();
 
             Console.WriteLine("Mirage Standalone Runner initialized");
@@ -73,21 +69,6 @@ namespace Mirage.Standalone
                 }
 
                 await Task.Delay(5);
-            }
-        }
-
-        static void RunInitializeMethods()
-        {
-            var asm = Assembly.GetEntryAssembly();
-
-            MethodInfo[] methods = asm.GetTypes()
-                .SelectMany(t => t.GetMethods())
-                .Where(m => m.GetCustomAttributes(typeof(RuntimeInitializeOnLoadMethodAttribute), false).Length > 0)
-                .ToArray();
-
-            foreach (MethodInfo method in methods)
-            {
-                method.Invoke(null, null);
             }
         }
     }
