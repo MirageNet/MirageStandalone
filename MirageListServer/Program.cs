@@ -128,8 +128,8 @@ namespace Mirage.ListServer.MasterServer
             {
                 if (_servers.TryGetValue(sender.Connection.EndPoint, out Server item))
                 {
-                    item.port = msg.port;
-                    Helper.UpdateIfNotNull(ref item.displayName, msg.displayName);
+                    item.port = msg.Port;
+                    Helper.UpdateIfNotNull(ref item.displayName, msg.DisplayName);
                     Helper.UpdateIfNotNull(ref item.playerCount, msg.PlayerCount);
                     Helper.UpdateIfNotNull(ref item.maxPlayerCount, msg.MaxPlayerCount);
                     item.lastUpdated = _now;
@@ -138,8 +138,8 @@ namespace Mirage.ListServer.MasterServer
                 {
                     _servers.Add(endPoint, new Server(address.ToString())
                     {
-                        port = msg.port,
-                        displayName = msg.displayName,
+                        port = msg.Port,
+                        displayName = msg.DisplayName,
                         playerCount = msg.PlayerCount,
                         maxPlayerCount = msg.MaxPlayerCount,
                         lastUpdated = _now
@@ -151,8 +151,8 @@ namespace Mirage.ListServer.MasterServer
                 logger.LogError("Could not get address for server");
                 sender.Send(new Failed
                 {
-                    messageName = nameof(AddServer),
-                    reason = "Could not get address for server",
+                    MessageName = nameof(AddServer),
+                    Reason = "Could not get address for server",
                 });
             }
         }
@@ -161,7 +161,7 @@ namespace Mirage.ListServer.MasterServer
         {
             if (_servers.TryGetValue(sender.Connection.EndPoint, out Server item))
             {
-                Helper.UpdateIfNotNull(ref item.displayName, msg.displayName);
+                Helper.UpdateIfNotNull(ref item.displayName, msg.DisplayName);
                 Helper.UpdateIfNotNull(ref item.playerCount, msg.PlayerCount);
                 Helper.UpdateIfNotNull(ref item.maxPlayerCount, msg.MaxPlayerCount);
                 item.lastUpdated = _now;
@@ -170,8 +170,8 @@ namespace Mirage.ListServer.MasterServer
             {
                 sender.Send(new Failed
                 {
-                    messageName = nameof(UpdateServer),
-                    reason = "Server not in list",
+                    MessageName = nameof(UpdateServer),
+                    Reason = "Server not in list",
                 });
             }
         }
@@ -186,8 +186,8 @@ namespace Mirage.ListServer.MasterServer
             {
                 sender.Send(new Failed
                 {
-                    messageName = nameof(KeepAlive),
-                    reason = "Server not in list",
+                    MessageName = nameof(KeepAlive),
+                    Reason = "Server not in list",
                 });
             }
         }
@@ -207,9 +207,9 @@ namespace Mirage.ListServer.MasterServer
                 {
                     address = x.address,
                     port = x.port,
-                    displayName = x.displayName,
-                    playerCount = x.playerCount,
-                    maxPlayerCount = x.maxPlayerCount
+                    DisplayName = x.displayName,
+                    PlayerCount = x.playerCount,
+                    MaxPlayerCount = x.maxPlayerCount
                 }).ToArray()
             });
         }
@@ -275,8 +275,8 @@ namespace Mirage.ListServer
     [NetworkMessage]
     struct AddServer
     {
-        public string displayName;
-        [BitCount(16)] public int port;
+        public string DisplayName;
+        [BitCount(16)] public int Port;
         public int PlayerCount;
         public int MaxPlayerCount;
     }
@@ -287,7 +287,7 @@ namespace Mirage.ListServer
     [NetworkMessage]
     struct UpdateServer
     {
-        public string displayName;
+        public string DisplayName;
         public int? PlayerCount;
         public int? MaxPlayerCount;
     }
@@ -318,17 +318,17 @@ namespace Mirage.ListServer
             public string address;
             [BitCount(16)] public int port;
 
-            public string displayName;
-            public int playerCount;
-            public int maxPlayerCount;
+            public string DisplayName;
+            public int PlayerCount;
+            public int MaxPlayerCount;
         }
     }
 
     [NetworkMessage]
     struct Failed
     {
-        public string messageName;
-        public string reason;
+        public string MessageName;
+        public string Reason;
     }
 }
 
@@ -363,23 +363,25 @@ namespace Mirage.ListServer.Server
 
         void FailedHandler(INetworkPlayer sender, Failed msg)
         {
-            logger.LogError($"{msg.messageName} failed: {msg.reason}");
+            logger.LogError($"{msg.MessageName} failed: {msg.Reason}");
 
-            if (msg.messageName == nameof(Mirage.ListServer.AddServer))
+            if (msg.MessageName == nameof(Mirage.ListServer.AddServer))
             {
                 _added = false;
             }
         }
 
 
-        public void AddServer()
+        public void AddServer(string displayName, int playerCount, int maxPlayers, int port)
         {
             _added = true;
-            _masterServer.Send(new AddServer()
+            _masterServer.Send(new AddServer
             {
-
+                DisplayName = displayName,
+                PlayerCount = playerCount,
+                MaxPlayerCount = maxPlayers,
+                Port = port,
             });
-            throw new NotImplementedException();
         }
 
         public void UpdateServer()
