@@ -15,8 +15,15 @@ namespace Mirage.ListServer.MasterServer
     {
         static void Main(string[] args)
         {
+            InitializeReadWrite.RunMethods();
+            ConfigureLog();
             var listServer = new Runner();
             listServer.Run();
+        }
+
+        static void ConfigureLog()
+        {
+            LogFactory.GetLogger<Mirage.SocketLayer.Peer>().filterLogType = LogType.Warning;
         }
     }
 
@@ -38,7 +45,10 @@ namespace Mirage.ListServer.MasterServer
         private void StartServer()
         {
             _server = new NetworkServer();
-            _server.SocketFactory = new UdpSocketFactory();
+            _server.SocketFactory = new UdpSocketFactory()
+            {
+                Port = 8001
+            };
             _server.PeerConfig = new Config
             {
                 MaxConnections = 1000,
@@ -69,10 +79,19 @@ namespace Mirage.ListServer.MasterServer
         public ListServer(MessageHandler messageHandler, int timeoutSeconds)
         {
             _timeoutSeconds = timeoutSeconds;
-            messageHandler.RegisterHandler<AddServer>(AddServerHandler);
-            messageHandler.RegisterHandler<UpdateServer>(UpdateServerHandler);
-            messageHandler.RegisterHandler<KeepAlive>(KeepAliveHandler);
-            messageHandler.RegisterHandler<RemoveServer>(RemoveServerHandler);
+            messageHandler.RegisterHandler<AddServer>(LogWrapper<AddServer>(AddServerHandler));
+            messageHandler.RegisterHandler<UpdateServer>(LogWrapper<UpdateServer>(UpdateServerHandler));
+            messageHandler.RegisterHandler<KeepAlive>(LogWrapper<KeepAlive>(KeepAliveHandler));
+            messageHandler.RegisterHandler<RemoveServer>(LogWrapper<RemoveServer>(RemoveServerHandler));
+            messageHandler.RegisterHandler<GetServers>(LogWrapper<GetServers>(GetServersHandler));
+        }
+        static MessageDelegateWithPlayer<T> LogWrapper<T>(MessageDelegateWithPlayer<T> inner)
+        {
+            return (INetworkPlayer p, T msg) =>
+            {
+                if (logger.LogEnabled()) logger.Log($"{typeof(T).Name} from {p}");
+                inner.Invoke(p, msg);
+            };
         }
 
         public void Update()
@@ -246,6 +265,7 @@ namespace Mirage.ListServer.MasterServer
         }
     }
 }
+
 namespace Mirage.ListServer
 {
     /// <summary>
