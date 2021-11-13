@@ -108,7 +108,7 @@ namespace Mirage.ListServer.MasterServer
             toRemove.Clear();
             foreach (KeyValuePair<IEndPoint, Server> kvp in _servers)
             {
-                DateTime time = kvp.Value.lastUpdated;
+                DateTime time = kvp.Value.LastUpdated;
                 if (time < timeOut)
                 {
                     toRemove.Add(kvp.Key);
@@ -128,21 +128,22 @@ namespace Mirage.ListServer.MasterServer
             {
                 if (_servers.TryGetValue(sender.Connection.EndPoint, out Server item))
                 {
-                    item.port = msg.Port;
-                    Helper.UpdateIfNotNull(ref item.displayName, msg.DisplayName);
-                    Helper.UpdateIfNotNull(ref item.playerCount, msg.PlayerCount);
-                    Helper.UpdateIfNotNull(ref item.maxPlayerCount, msg.MaxPlayerCount);
-                    item.lastUpdated = _now;
+                    item.Port = msg.Port;
+                    item.DisplayName = msg.DisplayName;
+                    item.PlayerCount = msg.PlayerCount;
+                    item.MaxPlayerCount = msg.MaxPlayerCount;
+                    item.LastUpdated = _now;
+                    item.MergeData(msg.ServerData);
                 }
                 else
                 {
-                    _servers.Add(endPoint, new Server(address.ToString())
+                    _servers.Add(endPoint, new Server(address.ToString(), msg.ServerData)
                     {
-                        port = msg.Port,
-                        displayName = msg.DisplayName,
-                        playerCount = msg.PlayerCount,
-                        maxPlayerCount = msg.MaxPlayerCount,
-                        lastUpdated = _now
+                        Port = msg.Port,
+                        DisplayName = msg.DisplayName,
+                        PlayerCount = msg.PlayerCount,
+                        MaxPlayerCount = msg.MaxPlayerCount,
+                        LastUpdated = _now
                     });
                 }
             }
@@ -161,10 +162,11 @@ namespace Mirage.ListServer.MasterServer
         {
             if (_servers.TryGetValue(sender.Connection.EndPoint, out Server item))
             {
-                Helper.UpdateIfNotNull(ref item.displayName, msg.DisplayName);
-                Helper.UpdateIfNotNull(ref item.playerCount, msg.PlayerCount);
-                Helper.UpdateIfNotNull(ref item.maxPlayerCount, msg.MaxPlayerCount);
-                item.lastUpdated = _now;
+                Helper.UpdateIfNotNull(ref item.DisplayName, msg.DisplayName);
+                Helper.UpdateIfNotNull(ref item.PlayerCount, msg.PlayerCount);
+                Helper.UpdateIfNotNull(ref item.MaxPlayerCount, msg.MaxPlayerCount);
+                item.LastUpdated = _now;
+                item.MergeData(msg.ServerData);
             }
             else
             {
@@ -180,7 +182,7 @@ namespace Mirage.ListServer.MasterServer
         {
             if (_servers.TryGetValue(sender.Connection.EndPoint, out Server item))
             {
-                item.lastUpdated = _now;
+                item.LastUpdated = _now;
             }
             else
             {
@@ -205,29 +207,55 @@ namespace Mirage.ListServer.MasterServer
                 // todo add max
                 servers = _servers.Values.Select(x => new GetServersReply.Server
                 {
-                    address = x.address,
-                    port = x.port,
-                    DisplayName = x.displayName,
-                    PlayerCount = x.playerCount,
-                    MaxPlayerCount = x.maxPlayerCount
+                    address = x.Address,
+                    port = x.Port,
+                    DisplayName = x.DisplayName,
+                    PlayerCount = x.PlayerCount,
+                    MaxPlayerCount = x.MaxPlayerCount,
+                    ServerData = x.ServerData,
                 }).ToArray()
             });
         }
 
         public class Server
         {
-            public readonly string address;
-            public int port;
+            public readonly string Address;
+            public int Port;
 
-            public string displayName;
-            public int playerCount;
-            public int maxPlayerCount;
+            public string DisplayName;
+            public int PlayerCount;
+            public int MaxPlayerCount;
 
-            public DateTime lastUpdated;
+            public DateTime LastUpdated;
 
-            public Server(string address)
+            private Dictionary<string, string> _serverData;
+
+            public IReadOnlyDictionary<string, string> ServerData;
+
+            public Server(string address, Dictionary<string, string> serverData = null)
             {
-                this.address = address;
+                Address = address;
+                _serverData = serverData;
+            }
+
+            public void MergeData(Dictionary<string, string> newData)
+            {
+                if (newData == null || newData.Count == 0)
+                    return;
+
+                // if current is null, we can just use reference of newData
+                if (_serverData == null)
+                {
+                    _serverData = newData;
+                    return;
+                }
+
+                foreach (KeyValuePair<string, string> data in newData)
+                {
+                    // use indexer here instead of add
+                    // we want to overwrite any old values if they exist
+                    _serverData[data.Key] = data.Value;
+                }
             }
         }
     }
@@ -269,6 +297,57 @@ namespace Mirage.ListServer.MasterServer
 
 namespace Mirage.ListServer
 {
+    public static class Extensions
+    {
+        public static void WriteStringDictionary(this NetworkWriter writer, Dictionary<string, string> keyValuePairs)
+        {
+            WriteReadOnlyStringDictionary(writer, keyValuePairs);
+        }
+
+        public static Dictionary<string, string> ReadStringDictionary(this NetworkReader reader)
+        {
+            if (reader.ReadBoolean())
+            {
+                int count = reader.ReadPackedInt32();
+                var keyValuePairs = new Dictionary<string, string>(capacity: count);
+                for (int i = 0; i < count; i++)
+                {
+                    string key = reader.ReadString();
+                    string value = reader.ReadString();
+                    keyValuePairs.Add(key, value);
+                }
+                return keyValuePairs;
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        public static void WriteReadOnlyStringDictionary(this NetworkWriter writer, IReadOnlyDictionary<string, string> keyValuePairs)
+        {
+            if (keyValuePairs == null)
+            {
+                writer.WriteBoolean(false);
+            }
+            else
+            {
+                writer.WriteBoolean(true);
+                writer.WritePackedInt32(keyValuePairs.Count);
+                foreach (KeyValuePair<string, string> kvp in keyValuePairs)
+                {
+                    writer.WriteString(kvp.Key);
+                    writer.WriteString(kvp.Value);
+                }
+            }
+        }
+
+        public static IReadOnlyDictionary<string, string> ReadReadOnlyStringDictionary(this NetworkReader reader)
+        {
+            return ReadStringDictionary(reader);
+        }
+    }
+
     /// <summary>
     /// Request to be added to list
     /// </summary>
@@ -279,6 +358,7 @@ namespace Mirage.ListServer
         [BitCount(16)] public int Port;
         public int PlayerCount;
         public int MaxPlayerCount;
+        public Dictionary<string, string> ServerData;
     }
 
     /// <summary>
@@ -290,6 +370,7 @@ namespace Mirage.ListServer
         public string DisplayName;
         public int? PlayerCount;
         public int? MaxPlayerCount;
+        public Dictionary<string, string> ServerData;
     }
 
     [NetworkMessage]
@@ -321,6 +402,7 @@ namespace Mirage.ListServer
             public string DisplayName;
             public int PlayerCount;
             public int MaxPlayerCount;
+            public IReadOnlyDictionary<string, string> ServerData;
         }
     }
 
