@@ -455,8 +455,7 @@ namespace Mirage.ListServer.Server
             }
         }
 
-
-        public void AddServer(string displayName, int playerCount, int maxPlayers, int port)
+        public void AddServer(string displayName, int playerCount, int maxPlayers, int port, Dictionary<string, string> serverData = null)
         {
             _added = true;
             _masterServer.Send(new AddServer
@@ -465,6 +464,7 @@ namespace Mirage.ListServer.Server
                 PlayerCount = playerCount,
                 MaxPlayerCount = maxPlayers,
                 Port = port,
+                ServerData = serverData,
             });
         }
 
