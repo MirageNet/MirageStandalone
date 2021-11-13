@@ -240,6 +240,8 @@ namespace Mirage.ListServer.MasterServer
 
             public void MergeData(Dictionary<string, string> newData)
             {
+                // todo validata data size (limit to 5-10 data per server)
+
                 if (newData == null || newData.Count == 0)
                     return;
 
