@@ -468,13 +468,14 @@ namespace Mirage.ListServer.Server
             });
         }
 
-        public void UpdateServer()
+        public void UpdateServer(string name = null, int? playerCount = null, Dictionary<string, string> changedData = null)
         {
             _masterServer.Send(new UpdateServer()
             {
-
+                DisplayName = name,
+                PlayerCount = playerCount,
+                ServerData = changedData,
             });
-            throw new NotImplementedException();
         }
 
         public void RemoveServer()
