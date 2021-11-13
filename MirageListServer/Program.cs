@@ -24,6 +24,7 @@ namespace Mirage.ListServer.MasterServer
         static void ConfigureLog()
         {
             LogFactory.GetLogger<Mirage.SocketLayer.Peer>().filterLogType = LogType.Warning;
+            LogFactory.GetLogger<Mirage.NetworkTime>().filterLogType = LogType.Warning;
         }
     }
 
