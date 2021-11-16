@@ -296,16 +296,26 @@ namespace Mirage.ListServer.MasterServer
                 field = value.Value;
         }
 
-
-        public static bool GetIPAddress(IEndPoint endPoint, out IPAddress address)
+        public static bool GetIPEndPoint(IEndPoint endPoint, out IPEndPoint ipEndPoint)
         {
             if (endPoint is EndPointWrapper wrapper)
             {
-                if (wrapper.inner is IPEndPoint ipEndPoint)
+                if (wrapper.inner is IPEndPoint ip)
                 {
-                    address = ipEndPoint.Address;
+                    ipEndPoint = ip;
                     return true;
                 }
+            }
+
+            ipEndPoint = null;
+            return false;
+        }
+        public static bool GetIPAddress(IEndPoint endPoint, out IPAddress address)
+        {
+            if (GetIPEndPoint(endPoint, out IPEndPoint ipEndPoint))
+            {
+                address = ipEndPoint.Address;
+                return true;
             }
 
             address = null;
