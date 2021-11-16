@@ -90,7 +90,24 @@ namespace Mirage.ListServer.MasterServer
         {
             return (INetworkPlayer p, T msg) =>
             {
-                if (logger.LogEnabled()) logger.Log($"{typeof(T).Name} from {p}");
+                if (logger.LogEnabled())
+                {
+                    string log = $"{typeof(T).Name} from {p}";
+                    System.Reflection.FieldInfo[] fields = typeof(T).GetFields();
+                    if (fields.Length > 0)
+                    {
+                        log += "\n  {\n";
+                        foreach (System.Reflection.FieldInfo fieldInfo in fields)
+                        {
+                            string name = fieldInfo.Name;
+                            object value = fieldInfo.GetValue(msg);
+                            log += $"    \"{name}\": \"{value}\",\n";
+                        }
+                        log += "  }";
+                    }
+                    logger.Log(log);
+                }
+
                 inner.Invoke(p, msg);
             };
         }
