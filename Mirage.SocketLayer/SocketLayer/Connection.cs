@@ -104,6 +104,7 @@ namespace Mirage.SocketLayer
         private readonly KeepAliveTracker keepAliveTracker;
         private readonly DisconnectedTracker disconnectedTracker;
 
+        private readonly Metrics metrics;
         private readonly AckSystem ackSystem;
 
         IEndPoint IConnection.EndPoint => EndPoint;
@@ -111,7 +112,7 @@ namespace Mirage.SocketLayer
         internal Connection(Peer peer, IEndPoint endPoint, IDataHandler dataHandler, Config config, Time time, Pool<ByteBuffer> bufferPool, ILogger logger, Metrics metrics)
         {
             this.peer = peer;
-            this.logger = logger;//?? Debug.unityLogger;
+            this.logger = logger ?? Debug.unityLogger;
 
             EndPoint = endPoint ?? throw new ArgumentNullException(nameof(endPoint));
             this.dataHandler = dataHandler ?? throw new ArgumentNullException(nameof(dataHandler));
@@ -122,6 +123,7 @@ namespace Mirage.SocketLayer
             keepAliveTracker = new KeepAliveTracker(config, time);
             disconnectedTracker = new DisconnectedTracker(config, time);
 
+            this.metrics = metrics;
             ackSystem = new AckSystem(this, config, time, bufferPool, metrics);
         }
 
@@ -130,6 +132,10 @@ namespace Mirage.SocketLayer
             return $"[{EndPoint}]";
         }
 
+        /// <summary>
+        /// Checks if new message need to be sent using its <see cref="State"/>
+        /// <para>Call this at end of frame to send new batches</para>
+        /// </summary>
         public void Update()
         {
             switch (State)
@@ -147,6 +153,7 @@ namespace Mirage.SocketLayer
                     break;
             }
         }
+
         public void SetReceiveTime()
         {
             timeoutTracker.SetReceiveTime();
@@ -166,6 +173,7 @@ namespace Mirage.SocketLayer
         public void SendUnreliable(byte[] packet, int offset, int length)
         {
             ThrowIfNotConnected();
+            metrics?.OnSendMessageUnreliable(length);
             peer.SendUnreliable(this, packet, offset, length);
         }
         public void SendUnreliable(byte[] packet)
@@ -183,6 +191,7 @@ namespace Mirage.SocketLayer
         public INotifyToken SendNotify(byte[] packet, int offset, int length)
         {
             ThrowIfNotConnected();
+            metrics?.OnSendMessageNotify(length);
             return ackSystem.SendNotify(packet, offset, length);
         }
         /// <summary>
@@ -206,6 +215,7 @@ namespace Mirage.SocketLayer
         public void SendNotify(byte[] packet, int offset, int length, INotifyCallBack callBacks)
         {
             ThrowIfNotConnected();
+            metrics?.OnSendMessageNotify(length);
             ackSystem.SendNotify(packet, offset, length, callBacks);
         }
         /// <summary>
@@ -231,6 +241,7 @@ namespace Mirage.SocketLayer
         public void SendReliable(byte[] message, int offset, int length)
         {
             ThrowIfNotConnected();
+            metrics?.OnSendMessageReliable(length);
             ackSystem.SendReliable(message, offset, length);
         }
         public void SendReliable(byte[] packet)
@@ -280,6 +291,7 @@ namespace Mirage.SocketLayer
             int offset = 1;
             int count = packet.length - offset;
             var segment = new ArraySegment<byte>(packet.buffer.array, offset, count);
+            metrics?.OnReceiveMessageUnreliable(count);
             dataHandler.ReceiveMessage(this, segment);
         }
 
@@ -351,6 +363,7 @@ namespace Mirage.SocketLayer
                 next.buffer.Release();
             }
 
+            metrics?.OnReceiveMessageReliable(messageLength);
             dataHandler.ReceiveMessage(this, new ArraySegment<byte>(message, 0, messageLength));
         }
 
@@ -365,6 +378,7 @@ namespace Mirage.SocketLayer
                 var message = new ArraySegment<byte>(array, offset, length);
                 offset += length;
 
+                metrics?.OnReceiveMessageReliable(length);
                 dataHandler.ReceiveMessage(this, message);
             }
 
@@ -377,6 +391,7 @@ namespace Mirage.SocketLayer
             ArraySegment<byte> segment = ackSystem.ReceiveNotify(packet.buffer.array, packet.length);
             if (segment != default)
             {
+                metrics?.OnReceiveMessageNotify(packet.length);
                 dataHandler.ReceiveMessage(this, segment);
             }
         }

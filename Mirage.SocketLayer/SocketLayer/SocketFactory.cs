@@ -1,8 +1,25 @@
 using System;
 using System.Net;
+using UnityEngine;
 
 namespace Mirage.SocketLayer
 {
+    /// <summary>
+    /// Can be added to SocketFactory that have an Address Setting
+    /// </summary>
+    public interface IHasAddress
+    {
+        string Address { get; set; }
+    }
+
+    /// <summary>
+    /// Can be added to SocketFactory that have a Port Setting
+    /// </summary>
+    public interface IHasPort
+    {
+        int Port { get; set; }
+    }
+
     /// <summary>
     /// Creates an instance of <see cref="ISocket"/>
     /// </summary>
@@ -12,7 +29,7 @@ namespace Mirage.SocketLayer
     /// - Show config data to the user using the inspector, and give that data in the form of an <see cref="EndPoint"/>
     /// <para>This is a MonoBehaviour so can be attached in the inspector</para>
     /// </remarks>
-    public abstract class SocketFactory
+    public abstract class SocketFactory : MonoBehaviour
     {
         /// <summary>Creates a <see cref="ISocket"/> to be used by <see cref="Peer"/> on the server</summary>
         /// <exception cref="NotSupportedException">Throw when Server is not supported on current platform</exception>
