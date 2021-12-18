@@ -355,7 +355,6 @@ namespace Mirage.Serialization
         /// <para>
         ///    Moves position to nearest byte then copies struct from that position
         /// </para>
-        /// See <see href="https://docs.unity3d.com/ScriptReference/Unity.Collections.LowLevel.Unsafe.UnsafeUtility.CopyPtrToStructure.html">UnsafeUtility.CopyPtrToStructure</see>
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="value"></param>
