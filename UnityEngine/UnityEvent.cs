@@ -1,17 +1,20 @@
-using System;
 using System.Collections.Generic;
 
-namespace UnityEngine
+namespace UnityEngine.Events
 {
+    public delegate void UnityAction();
+    public delegate void UnityAction<T>(T arg0);
+    public delegate void UnityAction<T0, T1>(T0 arg0, T1 arg1);
+
     public class UnityEvent : UnityEventBase
     {
-        List<Action> handlers = new List<Action>();
+        List<UnityAction> handlers = new List<UnityAction>();
 
-        public void AddListener(Action handler)
+        public void AddListener(UnityAction handler)
         {
             handlers.Add(handler);
         }
-        public void RemoveListener(Action handler)
+        public void RemoveListener(UnityAction handler)
         {
             handlers.Remove(handler);
         }
@@ -22,7 +25,7 @@ namespace UnityEngine
 
         public void Invoke()
         {
-            foreach (Action handler in handlers)
+            foreach (UnityAction handler in handlers)
             {
                 handler.Invoke();
             }
@@ -31,13 +34,13 @@ namespace UnityEngine
 
     public class UnityEvent<T> : UnityEventBase
     {
-        List<Action<T>> handlers = new List<Action<T>>();
+        List<UnityAction<T>> handlers = new List<UnityAction<T>>();
 
-        public void AddListener(Action<T> handler)
+        public void AddListener(UnityAction<T> handler)
         {
             handlers.Add(handler);
         }
-        public void RemoveListener(Action<T> handler)
+        public void RemoveListener(UnityAction<T> handler)
         {
             handlers.Remove(handler);
         }
@@ -48,7 +51,7 @@ namespace UnityEngine
 
         public void Invoke(T arg1)
         {
-            foreach (Action<T> handler in handlers)
+            foreach (UnityAction<T> handler in handlers)
             {
                 handler.Invoke(arg1);
             }
@@ -57,13 +60,13 @@ namespace UnityEngine
 
     public class UnityEvent<T0, T1> : UnityEventBase
     {
-        List<Action<T0, T1>> handlers = new List<Action<T0, T1>>();
+        List<UnityAction<T0, T1>> handlers = new List<UnityAction<T0, T1>>();
 
-        public void AddListener(Action<T0, T1> handler)
+        public void AddListener(UnityAction<T0, T1> handler)
         {
             handlers.Add(handler);
         }
-        public void RemoveListener(Action<T0, T1> handler)
+        public void RemoveListener(UnityAction<T0, T1> handler)
         {
             handlers.Remove(handler);
         }
@@ -74,7 +77,7 @@ namespace UnityEngine
 
         public void Invoke(T0 arg1, T1 arg2)
         {
-            foreach (Action<T0, T1> handler in handlers)
+            foreach (UnityAction<T0, T1> handler in handlers)
             {
                 handler.Invoke(arg1, arg2);
             }

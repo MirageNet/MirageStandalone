@@ -24,15 +24,15 @@ namespace Mirage.Standalone
             var socketFactory = new UdpSocketFactory { Port = port };
             var server = new NetworkServer { SocketFactory = socketFactory };
 
-            server.Started += () =>
+            server.Started.AddListener(() =>
             {
                 updated += server.Update;
-            };
+            });
 
-            server.Stopped += () =>
+            server.Stopped.AddListener(() =>
             {
                 updated -= server.Update;
-            };
+            });
 
             return server;
         }
@@ -42,15 +42,15 @@ namespace Mirage.Standalone
             var socketFactory = new UdpSocketFactory();
             var client = new NetworkClient { SocketFactory = socketFactory };
 
-            client.Started += () =>
+            client.Started.AddListener(() =>
             {
                 updated += client.Update;
-            };
+            });
 
-            client.Disconnected += (_) =>
+            client.Disconnected.AddListener((_) =>
             {
                 updated -= client.Update;
-            };
+            });
 
             return client;
         }

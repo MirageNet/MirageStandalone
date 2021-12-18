@@ -1,4 +1,4 @@
-namespace UnityEngine
+namespace UnityEngine.Events
 {
     public abstract class UnityEventBase
     {

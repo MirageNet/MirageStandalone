@@ -25,6 +25,7 @@ SOFTWARE.
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using UnityEngine;
 
 namespace Mirage.Serialization
 {
@@ -90,7 +91,7 @@ namespace Mirage.Serialization
             this.allowResize = allowResize;
 
             // ensure capacity is multiple of 8
-            int ulongCapacity = (int)Math.Ceiling(minByteCapacity / (float)sizeof(ulong));
+            int ulongCapacity = Mathf.CeilToInt(minByteCapacity / (float)sizeof(ulong));
             int byteCapacity = ulongCapacity * sizeof(ulong);
 
             bitCapacity = byteCapacity * 8;
@@ -119,7 +120,7 @@ namespace Mirage.Serialization
                 }
             }
 
-            Console.WriteLine($"Resizing buffer, new size:{size} bytes");
+            Debug.LogWarning($"Resizing buffer, new size:{size} bytes");
 
             FreeHandle();
 
@@ -358,22 +359,21 @@ namespace Mirage.Serialization
         /// <para>
         ///    Moves position to nearest byte then copies struct to that position
         /// </para>
-        /// See <see href="https://docs.unity3d.com/ScriptReference/Unity.Collections.LowLevel.Unsafe.UnsafeUtility.CopyStructureToPtr.html">UnsafeUtility.CopyStructureToPtr</see>
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="value"></param>
-        /// <param name="byteSize">size of struct, in bytes</param>
-        //public void PadAndCopy<T>(ref T value, int byteSize) where T : struct
-        //{
-        //    PadToByte();
-        //    int newPosition = bitPosition + (8 * byteSize);
-        //    CheckCapacity(newPosition);
+        public void PadAndCopy<T>(in T value) where T : unmanaged
+        {
+            PadToByte();
+            int newPosition = bitPosition + (8 * sizeof(T));
+            CheckCapacity(newPosition);
 
-        //    byte* startPtr = ((byte*)longPtr) + (bitPosition >> 3);
+            byte* startPtr = ((byte*)longPtr) + (bitPosition >> 3);
 
-        //    UnsafeUtility.CopyStructureToPtr(ref value, startPtr);
-        //    bitPosition = newPosition;
-        //}
+            var ptr = (T*)startPtr;
+            *ptr = value;
+            bitPosition = newPosition;
+        }
 
         /// <summary>
         /// <para>
@@ -432,7 +432,7 @@ namespace Mirage.Serialization
             //      if bitlength == 0 then write will return
             Write(*otherPtr, bitLength);
 
-            //Debug.Assert(bitPosition == newBit, "bitPosition should already be equal to newBit because it would have incremented each WriteUInt64");
+            Debug.Assert(bitPosition == newBit, "bitPosition should already be equal to newBit because it would have incremented each WriteUInt64");
             bitPosition = newBit;
         }
     }

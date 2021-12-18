@@ -1,4 +1,4 @@
-using System;
+using UnityEngine.Events;
 
 namespace Mirage.Events
 {
@@ -10,8 +10,8 @@ namespace Mirage.Events
     /// </remarks>
     public interface IAddLateEvent
     {
-        void AddListener(Action handler);
-        void RemoveListener(Action handler);
+        void AddListener(UnityAction handler);
+        void RemoveListener(UnityAction handler);
     }
 
 
@@ -20,8 +20,8 @@ namespace Mirage.Events
     /// </summary>
     public interface IAddLateEvent<T0>
     {
-        void AddListener(Action<T0> handler);
-        void RemoveListener(Action<T0> handler);
+        void AddListener(UnityAction<T0> handler);
+        void RemoveListener(UnityAction<T0> handler);
     }
 
 
@@ -30,7 +30,7 @@ namespace Mirage.Events
     /// </summary>
     public interface IAddLateEvent<T0, T1>
     {
-        void AddListener(Action<T0, T1> handler);
-        void RemoveListener(Action<T0, T1> handler);
+        void AddListener(UnityAction<T0, T1> handler);
+        void RemoveListener(UnityAction<T0, T1> handler);
     }
 }

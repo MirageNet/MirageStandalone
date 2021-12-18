@@ -7,6 +7,7 @@
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,7 +26,7 @@
     <ProjectReference Include="..\Mirage.Logging\Mirage.Logging.csproj" />
     <ProjectReference Include="..\Mirage.SocketLayer\Mirage.SocketLayer.csproj" />
     <ProjectReference Include="..\Mirage.Sockets\Mirage.Sockets.csproj" />
-    <ProjectReference Include="..\UnityEngine\UnityEngine.csproj" />
+    <ProjectReference Include="..\UnityEngine\FakeUnityEngine.csproj" />
   </ItemGroup>
 
 </Project>

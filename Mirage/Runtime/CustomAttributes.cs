@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 
 namespace Mirage
 {
@@ -13,7 +14,7 @@ namespace Mirage
     /// <summary>
     /// Converts a string property into a Scene property in the inspector
     /// </summary>
-    public sealed class SceneAttribute : Attribute { }
+    public sealed class SceneAttribute : PropertyAttribute { }
 
     /// <summary>
     /// Used to show private SyncList in the inspector,
@@ -26,5 +27,5 @@ namespace Mirage
     /// Draws UnityEvent as a foldout
     /// </summary>
     [AttributeUsage(AttributeTargets.Field)]
-    public sealed class FoldoutEventAttribute : Attribute { }
+    public sealed class FoldoutEventAttribute : PropertyAttribute { }
 }

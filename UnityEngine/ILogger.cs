@@ -1,7 +1,36 @@
 using System;
+using System.Diagnostics;
 
 namespace UnityEngine
 {
+    public static class Debug
+    {
+        public static ILogger unityLogger => throw new NotSupportedException();
+
+        public static void Assert(bool condition, string msg)
+        {
+            if (condition)
+                throw new Exception($"Assert Failed: {msg}");
+        }
+
+        public static void LogWarning(string message) => unityLogger.LogWarning(message);
+    }
+    public static class Time
+    {
+        static float start;
+
+        static float GetNow() => Stopwatch.GetTimestamp() / (float)Stopwatch.Frequency;
+
+        static Time()
+        {
+            start = GetNow();
+        }
+
+        public static float time => GetNow() - start;
+
+        public static int frameCount => throw new NotSupportedException();
+    }
+
     // eum to match unity
     public enum LogType
     {

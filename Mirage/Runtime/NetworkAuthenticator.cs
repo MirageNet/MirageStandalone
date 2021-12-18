@@ -1,12 +1,13 @@
 using System;
+using UnityEngine;
 
 namespace Mirage
 {
     /// <summary>
     /// Base class for implementing component-based authentication during the Connect phase
     /// </summary>
-    //[HelpURL("https://miragenet.github.io/Mirage/Articles/Components/Authenticators/index.html")]
-    public abstract class NetworkAuthenticator
+    [HelpURL("https://miragenet.github.io/Mirage/Articles/Components/Authenticators/index.html")]
+    public abstract class NetworkAuthenticator : MonoBehaviour
     {
         /// <summary>
         /// Notify subscribers on the server when a client is authenticated
