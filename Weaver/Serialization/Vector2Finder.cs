@@ -26,11 +26,11 @@ namespace Mirage.Weaver.Serialization
             var settings = new Vector2PackSettings();
             for (int i = 0; i < 2; i++)
             {
-                //settings.max[i] = (float)attribute.ConstructorArguments[i].Value;
-                //if (settings.max[i] <= 0)
-                //{
-                //    throw new Vector2PackException($"Max must be above 0, max:{settings.max}");
-                //}
+                settings.max[i] = (float)attribute.ConstructorArguments[i].Value;
+                if (settings.max[i] <= 0)
+                {
+                    throw new Vector2PackException($"Max must be above 0, max:{settings.max}");
+                }
             }
 
             if (attribute.ConstructorArguments.Count == 3)
@@ -68,32 +68,32 @@ namespace Mirage.Weaver.Serialization
             float precision = (float)arg.Value;
             ValidatePrecision(settings.max.x, precision, (s) => new Vector2PackException(s));
             ValidatePrecision(settings.max.y, precision, (s) => new Vector2PackException(s));
-            //settings.precision = new Vector2(precision, precision);
+            settings.precision = new Vector2(precision, precision);
         }
         private static void BitCountfrom1(ref Vector2PackSettings settings, CustomAttributeArgument arg)
         {
             int bitCount = (int)arg.Value;
             ValidateBitCount(bitCount, (s) => new Vector2PackException(s));
-            //settings.bitCount = new Vector2Int(bitCount, bitCount);
+            settings.bitCount = new Vector2Int(bitCount, bitCount);
         }
         private static void PrecisionFrom2(ref Vector2PackSettings settings, CustomAttributeArgument xArg, CustomAttributeArgument yArg)
         {
             // check vs all 3 axis
-            //var precision = new Vector2(
-            //    (float)xArg.Value,
-            //    (float)yArg.Value);
-            //ValidatePrecision(settings.max.x, precision.x, (s) => new Vector2PackException(s));
-            //ValidatePrecision(settings.max.y, precision.y, (s) => new Vector2PackException(s));
-            //settings.precision = precision;
+            var precision = new Vector2(
+                (float)xArg.Value,
+                (float)yArg.Value);
+            ValidatePrecision(settings.max.x, precision.x, (s) => new Vector2PackException(s));
+            ValidatePrecision(settings.max.y, precision.y, (s) => new Vector2PackException(s));
+            settings.precision = precision;
         }
         private static void BitCountFrom2(ref Vector2PackSettings settings, CustomAttributeArgument xArg, CustomAttributeArgument yArg)
         {
             // check vs all 3 axis
             ValidateBitCount((int)xArg.Value, (s) => new Vector2PackException(s));
             ValidateBitCount((int)yArg.Value, (s) => new Vector2PackException(s));
-            //settings.bitCount = new Vector2Int(
-            //    (int)xArg.Value,
-            //    (int)yArg.Value);
+            settings.bitCount = new Vector2Int(
+                (int)xArg.Value,
+                (int)yArg.Value);
         }
 
         protected override LambdaExpression GetPackMethod(TypeReference fieldType)

@@ -18,6 +18,13 @@ namespace Mirage.Weaver
         protected override Expression<Action> ListExpression => () => CollectionExtensions.WriteList<byte>(default, default);
         protected override Expression<Action> NullableExpression => () => SystemTypesExtensions.WriteNullable<byte>(default, default);
 
+        protected override MethodReference GetNetworkBehaviourFunction(TypeReference typeReference)
+        {
+            MethodReference writeFunc = module.ImportReference<NetworkWriter>((nw) => nw.WriteNetworkBehaviour(default));
+            Register(typeReference, writeFunc);
+            return writeFunc;
+        }
+
         protected override MethodReference GenerateEnumFunction(TypeReference typeReference)
         {
             WriteMethod writerMethod = GenerateWriterFunc(typeReference);

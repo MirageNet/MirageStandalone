@@ -28,11 +28,11 @@ namespace Mirage.Weaver.Serialization
             var settings = new Vector3PackSettings();
             for (int i = 0; i < 3; i++)
             {
-                //settings.max[i] = (float)attribute.ConstructorArguments[i].Value;
-                //if (settings.max[i] <= 0)
-                //{
-                //    throw new Vector3PackException($"Max must be above 0, max:{settings.max}");
-                //}
+                settings.max[i] = (float)attribute.ConstructorArguments[i].Value;
+                if (settings.max[i] <= 0)
+                {
+                    throw new Vector3PackException($"Max must be above 0, max:{settings.max}");
+                }
             }
 
             if (attribute.ConstructorArguments.Count == 4)

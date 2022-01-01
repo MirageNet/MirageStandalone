@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using Unity.CompilationPipeline.Common.ILPostProcessing;
 using UnityEngine;
 using ConditionalAttribute = System.Diagnostics.ConditionalAttribute;
 
@@ -62,6 +63,22 @@ namespace Mirage.Weaver
                 }
 
                 IReadOnlyList<FoundType> foundTypes = FindAllClasses(module);
+
+                using (timer.Sample("AttributeProcessor"))
+                {
+                    var attributeProcessor = new AttributeProcessor(module, logger);
+                    modified |= attributeProcessor.ProcessTypes(foundTypes);
+                }
+
+                using (timer.Sample("WeaveNetworkBehavior"))
+                {
+                    foreach (FoundType foundType in foundTypes)
+                    {
+                        if (foundType.IsNetworkBehaviour)
+                            modified |= WeaveNetworkBehavior(foundType);
+                    }
+                }
+
 
                 if (modified)
                 {
@@ -137,9 +154,16 @@ namespace Mirage.Weaver
             if (!type.IsClass) return;
 
             TypeReference parent = type.BaseType;
+            bool isNetworkBehaviour = false;
             bool isMonoBehaviour = false;
             while (parent != null)
             {
+                if (parent.Is<NetworkBehaviour>())
+                {
+                    isNetworkBehaviour = true;
+                    isMonoBehaviour = true;
+                    break;
+                }
                 if (parent.Is<MonoBehaviour>())
                 {
                     isMonoBehaviour = true;
@@ -149,7 +173,47 @@ namespace Mirage.Weaver
                 parent = parent.TryResolveParent();
             }
 
-            foundTypes.Add(new FoundType(type, isMonoBehaviour));
+            foundTypes.Add(new FoundType(type, isNetworkBehaviour, isMonoBehaviour));
+        }
+
+        bool WeaveNetworkBehavior(FoundType foundType)
+        {
+            List<TypeDefinition> behaviourClasses = FindAllBaseTypes(foundType);
+
+            bool modified = false;
+            // process this and base classes from parent to child order
+            for (int i = behaviourClasses.Count - 1; i >= 0; i--)
+            {
+                TypeDefinition behaviour = behaviourClasses[i];
+                if (NetworkBehaviourProcessor.WasProcessed(behaviour)) { continue; }
+
+                modified |= new NetworkBehaviourProcessor(behaviour, readers, writers, propertySiteProcessor, logger).Process();
+            }
+            return modified;
+        }
+
+        /// <summary>
+        /// Returns all base types that are between the type and NetworkBehaviour
+        /// </summary>
+        /// <param name="foundType"></param>
+        /// <returns></returns>
+        static List<TypeDefinition> FindAllBaseTypes(FoundType foundType)
+        {
+            var behaviourClasses = new List<TypeDefinition>();
+
+            TypeDefinition type = foundType.TypeDefinition;
+            while (type != null)
+            {
+                if (type.Is<NetworkBehaviour>())
+                {
+                    break;
+                }
+
+                behaviourClasses.Add(type);
+                type = type.BaseType.TryResolve();
+            }
+
+            return behaviourClasses;
         }
     }
 
@@ -157,11 +221,17 @@ namespace Mirage.Weaver
     {
         public readonly TypeDefinition TypeDefinition;
 
+        /// <summary>
+        /// Is Derived From NetworkBehaviour
+        /// </summary>
+        public readonly bool IsNetworkBehaviour;
+
         public readonly bool IsMonoBehaviour;
 
-        public FoundType(TypeDefinition typeDefinition, bool isMonoBehaviour)
+        public FoundType(TypeDefinition typeDefinition, bool isNetworkBehaviour, bool isMonoBehaviour)
         {
             TypeDefinition = typeDefinition;
+            IsNetworkBehaviour = isNetworkBehaviour;
             IsMonoBehaviour = isMonoBehaviour;
         }
 
