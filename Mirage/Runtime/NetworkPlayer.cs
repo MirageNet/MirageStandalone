@@ -4,6 +4,7 @@ using Mirage.Logging;
 using Mirage.Serialization;
 using Mirage.SocketLayer;
 using UnityEngine;
+using UnityEngine.Assertions;
 
 namespace Mirage
 {

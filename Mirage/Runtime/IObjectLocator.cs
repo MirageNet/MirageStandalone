@@ -1,4 +1,4 @@
-﻿namespace Mirage
+namespace Mirage
 {
     /// <summary>
     /// An object that implements this interface can find objects by their net id

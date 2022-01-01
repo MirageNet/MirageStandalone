@@ -23,7 +23,7 @@ namespace Mirage
         static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkServer));
 
         public bool EnablePeerMetrics;
-        [TooltipAttribute("Sequence size of buffer in bits.\n10 => array size 1024 => ~17 seconds at 60hz")]
+        [Tooltip("Sequence size of buffer in bits.\n10 => array size 1024 => ~17 seconds at 60hz")]
         public int MetricsSize = 10;
         public Metrics Metrics { get; private set; }
 
@@ -36,21 +36,21 @@ namespace Mirage
         /// The maximum number of concurrent network connections to support. Excluding the host player.
         /// <para>This field is only used if the <see cref="PeerConfig"/> property is null</para>
         /// </summary>
-        [TooltipAttribute("Maximum number of concurrent connections. Excluding the host player.")]
+        [Tooltip("Maximum number of concurrent connections. Excluding the host player.")]
         [Min(1)]
         public int MaxConnections = 4;
 
         public bool DisconnectOnException = true;
 
-        [TooltipAttribute("If disabled the server will not create a Network Peer to listen. This can be used to run server single player mode")]
+        [Tooltip("If disabled the server will not create a Network Peer to listen. This can be used to run server single player mode")]
         public bool Listening = true;
 
-        [TooltipAttribute("Creates Socket for Peer to use")]
+        [Tooltip("Creates Socket for Peer to use")]
         public SocketFactory SocketFactory;
 
         Peer peer;
 
-        [TooltipAttribute("Authentication component attached to this object")]
+        [Tooltip("Authentication component attached to this object")]
         public NetworkAuthenticator authenticator;
 
         [Header("Events")]
@@ -138,6 +138,12 @@ namespace Mirage
         public SyncVarSender SyncVarSender { get; private set; }
         public MessageHandler MessageHandler { get; private set; }
 
+        private void OnDestroy()
+        {
+            // if gameobject with server on is destroyed, stop the server
+            if (Active)
+                Stop();
+        }
 
         /// <summary>
         /// This shuts down the server and disconnects all clients.
@@ -163,7 +169,7 @@ namespace Mirage
 
             Cleanup();
 
-            // remove listen when server is stopped so that 
+            // remove listen when server is stopped so that we can cleanup correctly 
             Application.quitting -= Stop;
         }
 
@@ -275,7 +281,7 @@ namespace Mirage
         {
             var player = new NetworkPlayer(conn);
 
-            if (logger.LogEnabled()) logger.Log("Server accepted client:" + player);
+            if (logger.LogEnabled()) logger.Log($"Server accepted client: {player}");
 
             // add connection
             AddConnection(player);
@@ -286,7 +292,7 @@ namespace Mirage
 
         private void Peer_OnDisconnected(IConnection conn, DisconnectReason reason)
         {
-            if (logger.LogEnabled()) logger.Log($"[{conn}] discconnected with reason {reason}");
+            if (logger.LogEnabled()) logger.Log($"Client {conn} disconnected with reason: {reason}");
 
             if (connections.TryGetValue(conn, out INetworkPlayer player))
             {
@@ -295,7 +301,7 @@ namespace Mirage
             else
             {
                 // todo remove or replace with assert
-                if (logger.WarnEnabled()) logger.LogWarning($"No handler found for [{conn}]");
+                if (logger.WarnEnabled()) logger.LogWarning($"No handler found for disconnected client {conn}");
             }
         }
 
@@ -368,16 +374,16 @@ namespace Mirage
         {
             if (LocalPlayer != null)
             {
-                throw new InvalidOperationException("Local Connection already exists");
+                throw new InvalidOperationException("Local client connection already exists");
             }
 
             var player = new NetworkPlayer(connection);
             LocalPlayer = player;
             LocalClient = client;
 
-            if (logger.LogEnabled()) logger.Log("Server accepted Local client:" + player);
+            if (logger.LogEnabled()) logger.Log($"Server accepted local client connection: {player}");
 
-            // add connection
+            // add the connection for this local player.
             AddConnection(player);
         }
 
@@ -389,7 +395,7 @@ namespace Mirage
         {
             if (LocalPlayer == null)
             {
-                throw new InvalidOperationException("Local Connection does not exist");
+                throw new InvalidOperationException("Local connection does not exist");
             }
             Connected?.Invoke(LocalPlayer);
         }
@@ -464,7 +470,8 @@ namespace Mirage
         {
             if (logger.LogEnabled()) logger.Log("Server disconnect client:" + player);
 
-            // set flag first so we dont try to send message to connection
+            // set the flag first so we dont try to send any messages to the disconnected
+            // connection as they wouldn't get them
             player.MarkAsDisconnected();
 
             RemoveConnection(player);
@@ -508,7 +515,7 @@ namespace Mirage
                 else
                 {
                     // todo remove or replace with assert
-                    if (logger.WarnEnabled()) logger.LogWarning($"No player found for [{connection}]");
+                    if (logger.WarnEnabled()) logger.LogWarning($"No player found for message received from client {connection}");
                 }
             }
         }
