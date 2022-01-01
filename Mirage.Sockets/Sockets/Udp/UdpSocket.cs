@@ -1,6 +1,7 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
+using Mirage.Logging;
 using Mirage.SocketLayer;
 using UnityEngine;
 
@@ -8,6 +9,8 @@ namespace Mirage.Sockets.Udp
 {
     public class UdpSocket : ISocket
     {
+        static readonly ILogger logger = LogFactory.GetLogger<UdpSocket>();
+
         Socket socket;
         EndPointWrapper Endpoint;
 
@@ -60,8 +63,8 @@ namespace Mirage.Sockets.Udp
             }
             catch (Exception e)
             {
-                Debug.LogError("Exception setting IOControl");
-                Debug.LogException(e);
+                logger.LogError("Exception setting IOControl");
+                logger.LogException(e);
             }
         }
 
