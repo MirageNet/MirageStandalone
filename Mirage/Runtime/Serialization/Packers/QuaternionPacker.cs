@@ -26,8 +26,6 @@ using System;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 
-//using UnityEngine;
-
 namespace Mirage.Serialization
 {
     public sealed class QuaternionPacker
@@ -79,12 +77,12 @@ namespace Mirage.Serialization
 
             // largest needs to be positive to be calculated by reader 
             // if largest is negative flip sign of others because Q = -Q
-            //if (_value[(int)index] < 0)
-            //{
-            //    a = -a;
-            //    b = -b;
-            //    c = -c;
-            //}
+            if (_value[(int)index] < 0)
+            {
+                a = -a;
+                b = -b;
+                c = -c;
+            }
 
             // todo, should we be rounding down for abc? because if they are rounded up their sum may be greater than largest
 
@@ -99,64 +97,64 @@ namespace Mirage.Serialization
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void QuickNormalize(ref Quaternion quaternion)
         {
-            //float dot =
-            //    (quaternion.x * quaternion.x) +
-            //    (quaternion.y * quaternion.y) +
-            //    (quaternion.z * quaternion.z) +
-            //    (quaternion.w * quaternion.w);
+            float dot =
+                (quaternion.x * quaternion.x) +
+                (quaternion.y * quaternion.y) +
+                (quaternion.z * quaternion.z) +
+                (quaternion.w * quaternion.w);
 
-            //const float allowedEpsilon = 1E-5f;
-            //const float minAllowed = 1 - allowedEpsilon;
-            //const float maxAllowed = 1 + allowedEpsilon;
-            //// only normalize if dot product is outside allowed range
-            //if (minAllowed > dot || maxAllowed < dot)
-            //{
-            //    float dotSqrt = (float)Math.Sqrt(dot);
-            //    // rotation is 0
-            //    if (dotSqrt < allowedEpsilon)
-            //    {
-            //        // identity
-            //        quaternion.x = 0;
-            //        quaternion.y = 0;
-            //        quaternion.z = 0;
-            //        quaternion.w = 1;
-            //    }
-            //    else
-            //    {
-            //        float iDotSqrt = 1 / dotSqrt;
-            //        quaternion.x *= iDotSqrt;
-            //        quaternion.y *= iDotSqrt;
-            //        quaternion.z *= iDotSqrt;
-            //        quaternion.w *= iDotSqrt;
-            //    }
-            //}
+            const float allowedEpsilon = 1E-5f;
+            const float minAllowed = 1 - allowedEpsilon;
+            const float maxAllowed = 1 + allowedEpsilon;
+            // only normalize if dot product is outside allowed range
+            if (minAllowed > dot || maxAllowed < dot)
+            {
+                float dotSqrt = (float)Math.Sqrt(dot);
+                // rotation is 0
+                if (dotSqrt < allowedEpsilon)
+                {
+                    // identity
+                    quaternion.x = 0;
+                    quaternion.y = 0;
+                    quaternion.z = 0;
+                    quaternion.w = 1;
+                }
+                else
+                {
+                    float iDotSqrt = 1 / dotSqrt;
+                    quaternion.x *= iDotSqrt;
+                    quaternion.y *= iDotSqrt;
+                    quaternion.z *= iDotSqrt;
+                    quaternion.w *= iDotSqrt;
+                }
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void FindLargestIndex(ref Quaternion quaternion, out uint index)
         {
-            //float x2 = quaternion.x * quaternion.x;
-            //float y2 = quaternion.y * quaternion.y;
-            //float z2 = quaternion.z * quaternion.z;
-            //float w2 = quaternion.w * quaternion.w;
+            float x2 = quaternion.x * quaternion.x;
+            float y2 = quaternion.y * quaternion.y;
+            float z2 = quaternion.z * quaternion.z;
+            float w2 = quaternion.w * quaternion.w;
 
             index = 0;
-            //float current = x2;
-            //// check vs sq to avoid doing mathf.abs
-            //if (y2 > current)
-            //{
-            //    index = 1;
-            //    current = y2;
-            //}
-            //if (z2 > current)
-            //{
-            //    index = 2;
-            //    current = z2;
-            //}
-            //if (w2 > current)
-            //{
-            //    index = 3;
-            //}
+            float current = x2;
+            // check vs sq to avoid doing mathf.abs
+            if (y2 > current)
+            {
+                index = 1;
+                current = y2;
+            }
+            if (z2 > current)
+            {
+                index = 2;
+                current = z2;
+            }
+            if (w2 > current)
+            {
+                index = 3;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -165,25 +163,25 @@ namespace Mirage.Serialization
             switch (largestIndex)
             {
                 case 0:
-                    //a = quaternion.y;
-                    //b = quaternion.z;
-                    //c = quaternion.w;
-                    //return;
+                    a = quaternion.y;
+                    b = quaternion.z;
+                    c = quaternion.w;
+                    return;
                 case 1:
-                    //a = quaternion.x;
-                    //b = quaternion.z;
-                    //c = quaternion.w;
-                    //return;
+                    a = quaternion.x;
+                    b = quaternion.z;
+                    c = quaternion.w;
+                    return;
                 case 2:
-                    //a = quaternion.x;
-                    //b = quaternion.y;
-                    //c = quaternion.w;
-                    //return;
+                    a = quaternion.x;
+                    b = quaternion.y;
+                    c = quaternion.w;
+                    return;
                 case 3:
-                    //a = quaternion.x;
-                    //b = quaternion.y;
-                    //c = quaternion.z;
-                    //return;
+                    a = quaternion.x;
+                    b = quaternion.y;
+                    c = quaternion.z;
+                    return;
                 default:
                     ThrowIfOutOfRange();
                     a = b = c = default;
@@ -210,13 +208,13 @@ namespace Mirage.Serialization
             switch (index)
             {
                 case 0:
-                    //return new Quaternion(largest, a, b, c);
+                    return new Quaternion(largest, a, b, c);
                 case 1:
-                    //return new Quaternion(a, largest, b, c);
+                    return new Quaternion(a, largest, b, c);
                 case 2:
-                    //return new Quaternion(a, b, largest, c);
+                    return new Quaternion(a, b, largest, c);
                 case 3:
-                    //return new Quaternion(a, b, c, largest);
+                    return new Quaternion(a, b, c, largest);
                 default:
                     ThrowIfOutOfRange();
                     return default;

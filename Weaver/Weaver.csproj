@@ -11,7 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Mirage\Mirage.csproj" />
-    <ProjectReference Include="..\UnityEngine\UnityEngine.csproj" />
+    <ProjectReference Include="..\UnityEngine\FakeUnityEngine.csproj" />
   </ItemGroup>
 
 </Project>

@@ -10,7 +10,7 @@ namespace Mirage.SocketLayer
     }
     internal class Time : ITime
     {
-        public float Now => DateTime.Now.Ticks;
+        public float Now => UnityEngine.Time.time;
     }
 
     public interface IPeer
@@ -22,7 +22,14 @@ namespace Mirage.SocketLayer
         void Bind(IEndPoint endPoint);
         IConnection Connect(IEndPoint endPoint);
         void Close();
-        void Update();
+        /// <summary>
+        /// Call this at the start of the frame to receive new messages
+        /// </summary>
+        void UpdateReceive();
+        /// <summary>
+        /// Call this at end of frame to send new batches
+        /// </summary>
+        void UpdateSent();
     }
 
     /// <summary>
@@ -54,7 +61,7 @@ namespace Mirage.SocketLayer
 
         public Peer(ISocket socket, IDataHandler dataHandler, Config config = null, ILogger logger = null, Metrics metrics = null)
         {
-            this.logger = logger;//?? Debug.unityLogger;
+            this.logger = logger ?? Debug.unityLogger;
             this.metrics = metrics;
             this.config = config ?? new Config();
 
@@ -65,7 +72,7 @@ namespace Mirage.SocketLayer
             connectKeyValidator = new ConnectKeyValidator();
 
             bufferPool = new Pool<ByteBuffer>(ByteBuffer.CreateNew, this.config.MaxPacketSize, this.config.BufferPoolStartSize, this.config.BufferPoolMaxSize, this.logger);
-            //Application.quitting += Application_quitting;
+            Application.quitting += Application_quitting;
         }
 
         private void Application_quitting()
@@ -106,7 +113,7 @@ namespace Mirage.SocketLayer
                 return;
             }
             active = false;
-            //Application.quitting -= Application_quitting;
+            Application.quitting -= Application_quitting;
 
             // send disconnect messages
             foreach (Connection conn in connections.Values)
@@ -215,9 +222,18 @@ namespace Mirage.SocketLayer
             }
         }
 
-        public void Update()
+        /// <summary>
+        /// Call this at the start of the frame to receive new messages
+        /// </summary>
+        public void UpdateReceive()
         {
             ReceiveLoop();
+        }
+        /// <summary>
+        /// Call this at end of frame to send new batches
+        /// </summary>
+        public void UpdateSent()
+        {
             UpdateConnections();
             metrics?.OnTick(connections.Count);
         }

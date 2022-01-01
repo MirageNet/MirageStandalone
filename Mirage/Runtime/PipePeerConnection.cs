@@ -122,7 +122,7 @@ namespace Mirage
 
         private void receive(byte[] packet, int offset, int length)
         {
-            //logger.Assert(State == ConnectionState.Connected);
+            logger.Assert(State == ConnectionState.Connected);
             otherHandler.ReceiveMessage(otherConnection, new ArraySegment<byte>(packet, offset, length));
         }
 

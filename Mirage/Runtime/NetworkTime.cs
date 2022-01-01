@@ -55,15 +55,14 @@ namespace Mirage
 
         internal void UpdateClient(INetworkClient client)
         {
-            long now = stopwatch.ElapsedMilliseconds / 1000;
-            if (now - lastPingTime >= PingFrequency)
+            if (UnityEngine.Time.time - lastPingTime >= PingFrequency)
             {
                 var pingMessage = new NetworkPingMessage
                 {
                     clientTime = LocalTime()
                 };
                 client.Send(pingMessage, Channel.Unreliable);
-                lastPingTime = now;
+                lastPingTime = UnityEngine.Time.time;
             }
         }
 
@@ -146,23 +145,24 @@ namespace Mirage
         /// <para>in other words,  if the server is running for 2 months,
         /// and you cast down to float,  then the time will jump in 0.4s intervals.</para>
         /// </remarks>
-        //public double Time
-        //{
-        //    get
-        //    {
-        //        // paul: LocalTime is very expensive
-        //        // so cache the time for the duration of the frame
-        //        // if someone asks for .time several times in a frame this has significant impact
-        //        // this also makes it more consistent with Time.time
-        //        if (lastFrame != UnityEngine.Time.frameCount)
-        //        {
-        //            // Notice _offset is 0 at the server
-        //            _time = LocalTime() - _offset.Value;
-        //            lastFrame = UnityEngine.Time.frameCount;
-        //        }
-        //        return _time;
-        //    }
-        //}
+        public double Time
+        {
+            get
+            {
+                // paul: LocalTime is very expensive
+                // so cache the time for the duration of the frame
+                // if someone asks for .time several times in a frame this has significant impact
+                // this also makes it more consistent with Time.time
+                if (lastFrame != UnityEngine.Time.frameCount)
+                {
+                    // Notice _offset is 0 at the server
+                    _time = LocalTime() - _offset.Value;
+                    lastFrame = UnityEngine.Time.frameCount;
+                }
+                return _time;
+
+            }
+        }
 
         /// <summary>
         /// Measurement of the variance of time.

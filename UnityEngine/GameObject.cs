@@ -1,46 +1,32 @@
 using System;
+using System.Collections.Generic;
 
 namespace UnityEngine
 {
     public class GameObject : Object
     {
-        public bool activeSelf;
-        public HideFlags hideFlags;
-        public Transform transform;
+        public Transform transform => throw new NotSupportedException();
 
-        public void SetActive(bool state)
-        {
-            activeSelf = state;
-        }
-        public void Destroy(GameObject gameObject)
-        {
-            throw new NotImplementedException();
-        }
+        readonly List<Component> components = new List<Component>();
 
-        public void DontDestroyOnLoad(GameObject gameObject)
-        {
-            throw new NotImplementedException();
-        }
-
-        public T GetComponent<T>()
+        public T GetComponent<T>() where T : class
         {
             _ = TryGetComponent(out T component);
             return component;
         }
 
-        public bool TryGetComponent<T>(out T component)
+        public bool TryGetComponent<T>(out T component) where T : class
         {
-            throw new NotImplementedException();
-        }
-
-        public GameObject Instantiate(GameObject prefab)
-        {
-            throw new NotImplementedException();
-        }
-
-        public GameObject Instantiate(GameObject prefab, Vector3 position, Quaternion rotation)
-        {
-            throw new NotImplementedException();
+            foreach (Component comp in components)
+            {
+                if (comp is T tComp)
+                {
+                    component = tComp;
+                    return true;
+                }
+            }
+            component = null;
+            return false;
         }
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Mirage.Logging;
 using Mirage.Serialization;
 using Mirage.SocketLayer;
@@ -19,6 +20,8 @@ namespace Mirage
     public sealed class NetworkPlayer : INetworkPlayer, IMessageSender
     {
         static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkPlayer));
+
+        private readonly HashSet<NetworkIdentity> visList = new HashSet<NetworkIdentity>();
 
         /// <summary>
         /// Transport level connection
@@ -46,6 +49,19 @@ namespace Mirage
         /// associated with the connection for reference after Authentication completes.
         /// </summary>
         public object AuthenticationData { get; set; }
+
+        /// <summary>
+        /// Flag that tells us if the scene has fully loaded in for player.
+        /// <para>This property is read-only. It is set by the system on the client when the scene has fully loaded, and set by the system on the server when a ready message is received from a client.</para>
+        /// <para>A client that is ready is sent spawned objects by the server and updates to the state of spawned objects. A client that is not ready is not sent spawned objects.</para>
+        /// <para>Starts as true, when a client connects it is assumed that it is already in a ready scene. It will be set to not ready if NetworkSceneManager loads a scene</para>
+        /// </summary>
+        public bool SceneIsReady { get; set; } = true;
+
+        /// <summary>
+        /// Checks if this player has a <see cref="Identity"/>
+        /// </summary>
+        public bool HasCharacter => Identity != null;
 
         /// <summary>
         /// The IP address / URL / FQDN associated with the connection.
@@ -78,13 +94,26 @@ namespace Mirage
         }
 
         /// <summary>
+        /// The NetworkIdentity for this connection.
+        /// </summary>
+        public NetworkIdentity Identity { get; set; }
+
+        /// <summary>
+        /// A list of the NetworkIdentity objects owned by this connection. This list is read-only.
+        /// <para>This includes the player object for the connection - if it has localPlayerAuthority set, and any objects spawned with local authority or set with AssignLocalAuthority.</para>
+        /// <para>This list can be used to validate messages from clients, to ensure that clients are only trying to control objects that they own.</para>
+        /// </summary>
+        // IMPORTANT: this needs to be <NetworkIdentity>, not <uint netId>. fixes a bug where DestroyOwnedObjects wouldn't find
+        //            the netId anymore: https://github.com/vis2k/Mirror/issues/1380 . Works fine with NetworkIdentity pointers though.
+        private readonly HashSet<NetworkIdentity> clientOwnedObjects = new HashSet<NetworkIdentity>();
+
+        /// <summary>
         /// Creates a new NetworkConnection with the specified address and connectionId
         /// </summary>
         /// <param name="networkConnectionId"></param>
         public NetworkPlayer(IConnection connection)
         {
-            //Assert.IsNotNull(connection);
-            this.connection = connection;
+            this.connection = connection ?? throw new ArgumentNullException(nameof(connection));
         }
 
 
@@ -132,6 +161,70 @@ namespace Mirage
         public override string ToString()
         {
             return $"connection({Address})";
+        }
+
+        public void AddToVisList(NetworkIdentity identity)
+        {
+            visList.Add(identity);
+        }
+
+        public void RemoveFromVisList(NetworkIdentity identity)
+        {
+            visList.Remove(identity);
+        }
+
+        /// <summary>
+        /// Removes all objects that this player can see
+        /// <para>This is called when loading a new scene</para>
+        /// </summary>
+        public void RemoveAllVisibleObjects()
+        {
+            foreach (NetworkIdentity identity in visList)
+            {
+                identity.RemoveObserverInternal(this);
+            }
+            visList.Clear();
+        }
+
+        public void AddOwnedObject(NetworkIdentity networkIdentity)
+        {
+            clientOwnedObjects.Add(networkIdentity);
+        }
+
+        public void RemoveOwnedObject(NetworkIdentity networkIdentity)
+        {
+            clientOwnedObjects.Remove(networkIdentity);
+        }
+
+        /// <summary>
+        /// Destroy all objects owned by this player
+        /// <para>NOTE: only destroyed objects that are currently spawned</para>
+        /// </summary>
+        public void DestroyOwnedObjects()
+        {
+            // create a copy because the list might be modified when destroying
+            var ownedObjects = new HashSet<NetworkIdentity>(clientOwnedObjects);
+
+            foreach (NetworkIdentity netIdentity in ownedObjects)
+            {
+                //dont destroy self yet.
+                if (netIdentity == Identity)
+                    continue;
+
+                if (netIdentity != null && netIdentity.ServerObjectManager != null)
+                {
+                    // use SOM on object we are destroying, it should be set if object is spawned,
+                    // we can't use Identity.ServerObjectManager because if Identity is null we wont have a SOM
+                    netIdentity.ServerObjectManager.Destroy(netIdentity);
+                }
+            }
+
+            if (Identity != null && Identity.ServerObjectManager != null)
+                // Destroy the connections own identity.
+                Identity.ServerObjectManager.Destroy(Identity.gameObject);
+
+            // clear the hashset because we destroyed them all
+            clientOwnedObjects.Clear();
         }
     }
 }

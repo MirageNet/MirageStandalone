@@ -3,7 +3,6 @@ using Mirage.Events;
 using Mirage.Logging;
 using Mirage.Serialization;
 using Mirage.SocketLayer;
-using Mirage.Sockets.Udp;
 using UnityEngine;
 
 namespace Mirage
@@ -20,11 +19,15 @@ namespace Mirage
     /// <para>The <see cref="NetworkClient">NetworkClient</see> handle connection state, messages handlers, and connection configuration. There can be many <see cref="NetworkClient">NetworkClient</see> instances in a process at a time, but only one that is connected to a game server (<see cref="NetworkServer">NetworkServer</see>) that uses spawned objects.</para>
     /// <para><see cref="NetworkClient">NetworkClient</see> has an internal update function where it handles events from the transport layer. This includes asynchronous connect events, disconnect events and incoming data from a server.</para>
     /// </summary>
-    public class NetworkClient : INetworkClient
+    [AddComponentMenu("Network/NetworkClient")]
+    [DisallowMultipleComponent]
+    public class NetworkClient : MonoBehaviour, INetworkClient
     {
         static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkClient));
 
         public bool EnablePeerMetrics;
+        [TooltipAttribute("Sequence size of buffer in bits.\n10 => array size 1024 => ~17 seconds at 60hz")]
+        public int MetricsSize = 10;
         public Metrics Metrics { get; private set; }
 
         /// <summary>
@@ -32,40 +35,41 @@ namespace Mirage
         /// </summary>
         public Config PeerConfig { get; set; }
 
-        //[Tooltip("Creates Socket for Peer to use")]
+        [TooltipAttribute("Creates Socket for Peer to use")]
         public SocketFactory SocketFactory;
 
         public bool DisconnectOnException = true;
 
         Peer peer;
 
-        //[Tooltip("Authentication component attached to this object")]
+        [TooltipAttribute("Authentication component attached to this object")]
         public NetworkAuthenticator authenticator;
 
-        AddLateEvent _started = new AddLateEvent();
-        NetworkPlayerAddLateEvent _connected = new NetworkPlayerAddLateEvent();
-        NetworkPlayerAddLateEvent _authenticated = new NetworkPlayerAddLateEvent();
-        DisconnectAddLateEvent _disconnected = new DisconnectAddLateEvent();
+        [Header("Events")]
+        [SerializeField] AddLateEvent _started = new AddLateEvent();
+        [SerializeField] NetworkPlayerAddLateEvent _connected = new NetworkPlayerAddLateEvent();
+        [SerializeField] NetworkPlayerAddLateEvent _authenticated = new NetworkPlayerAddLateEvent();
+        [SerializeField] DisconnectAddLateEvent _disconnected = new DisconnectAddLateEvent();
 
         /// <summary>
         /// Event fires when the client starts, before it has connected to the Server.
         /// </summary>
-        public Action Started;
+        public IAddLateEvent Started => _started;
 
         /// <summary>
         /// Event fires once the Client has connected its Server.
         /// </summary>
-        public Action<INetworkPlayer> Connected { get; set; }
+        public IAddLateEvent<INetworkPlayer> Connected => _connected;
 
         /// <summary>
         /// Event fires after the Client connection has successfully been authenticated with its Server.
         /// </summary>
-        public Action<INetworkPlayer> Authenticated { get; set; }
+        public IAddLateEvent<INetworkPlayer> Authenticated => _authenticated;
 
         /// <summary>
         /// Event fires after the Client has disconnected from its Server and Cleanup has been called.
         /// </summary>
-        public Action<ClientStoppedReason> Disconnected { get; set; }
+        public IAddLateEvent<ClientStoppedReason> Disconnected => _disconnected;
 
         /// <summary>
         /// The NetworkConnection object this client is using.
@@ -112,9 +116,9 @@ namespace Mirage
             if (logger.LogEnabled()) logger.Log($"Client connecting to endpoint: {endPoint}");
 
             ISocket socket = SocketFactory.CreateClientSocket();
-            MessageHandler = new MessageHandler(DisconnectOnException);
+            MessageHandler = new MessageHandler(World, DisconnectOnException);
             var dataHandler = new DataHandler(MessageHandler);
-            Metrics = EnablePeerMetrics ? new Metrics() : null;
+            Metrics = EnablePeerMetrics ? new Metrics(MetricsSize) : null;
 
             Config config = PeerConfig ?? new Config();
 
@@ -134,7 +138,7 @@ namespace Mirage
             RegisterMessageHandlers();
             InitializeAuthEvents();
             // invoke started event after everything is set up, but before peer has connected
-            Started?.Invoke();
+            _started.Invoke();
         }
 
         void ThrowIfActive()
@@ -144,8 +148,6 @@ namespace Mirage
 
         void ThrowIfSocketIsMissing()
         {
-            if (SocketFactory is null)
-                SocketFactory = new UdpSocketFactory();
             if (SocketFactory == null)
                 throw new InvalidOperationException($"{nameof(SocketFactory)} could not be found for ${nameof(NetworkServer)}");
         }
@@ -154,14 +156,14 @@ namespace Mirage
         {
             World.Time.UpdateClient(this);
             connectState = ConnectState.Connected;
-            Connected.Invoke(Player);
+            _connected.Invoke(Player);
         }
 
         private void Peer_OnConnectionFailed(IConnection conn, RejectReason reason)
         {
             if (logger.LogEnabled()) logger.Log($"Failed to connect to {conn.EndPoint} with reason {reason}");
             Player?.MarkAsDisconnected();
-            Disconnected?.Invoke(reason.ToClientStoppedReason());
+            _disconnected?.Invoke(reason.ToClientStoppedReason());
             Cleanup();
         }
 
@@ -169,14 +171,14 @@ namespace Mirage
         {
             if (logger.LogEnabled()) logger.Log($"Disconnected from {conn.EndPoint} with reason {reason}");
             Player?.MarkAsDisconnected();
-            Disconnected?.Invoke(reason.ToClientStoppedReason());
+            _disconnected?.Invoke(reason.ToClientStoppedReason());
             Cleanup();
         }
 
         void OnHostDisconnected()
         {
             Player?.MarkAsDisconnected();
-            Disconnected?.Invoke(ClientStoppedReason.HostModeStopped);
+            _disconnected?.Invoke(ClientStoppedReason.HostModeStopped);
         }
 
         internal void ConnectHost(NetworkServer server, IDataHandler serverDataHandler)
@@ -188,7 +190,7 @@ namespace Mirage
             World = server.World;
 
             // create local connection objects and connect them
-            MessageHandler = new MessageHandler(DisconnectOnException);
+            MessageHandler = new MessageHandler(World, DisconnectOnException);
             var dataHandler = new DataHandler(MessageHandler);
             (IConnection clientConn, IConnection serverConn) = PipePeerConnection.Create(dataHandler, serverDataHandler, OnHostDisconnected, null);
 
@@ -199,7 +201,7 @@ namespace Mirage
             RegisterHostHandlers();
             InitializeAuthEvents();
             // invoke started event after everything is set up, but before peer has connected
-            Started.Invoke();
+            _started.Invoke();
 
             // we need add server connection to server's dictionary first
             // then invoke connected event on client (client has to connect first or it will miss message in NetworkScenemanager)
@@ -217,18 +219,18 @@ namespace Mirage
                 authenticator.OnClientAuthenticated += OnAuthenticated;
                 authenticator.ClientSetup(this);
 
-                Connected += authenticator.ClientAuthenticate;
+                Connected.AddListener(authenticator.ClientAuthenticate);
             }
             else
             {
                 // if no authenticator, consider connection as authenticated
-                Connected += OnAuthenticated;
+                Connected.AddListener(OnAuthenticated);
             }
         }
 
         internal void OnAuthenticated(INetworkPlayer player)
         {
-            Authenticated?.Invoke(player);
+            _authenticated.Invoke(player);
         }
 
         /// <summary>
@@ -266,7 +268,7 @@ namespace Mirage
             Player.Send(segment, channelId);
         }
 
-        public void Update()
+        internal void Update()
         {
             // local connection?
             if (!IsLocalClient && Active && connectState == ConnectState.Connected)
@@ -274,7 +276,8 @@ namespace Mirage
                 // only update things while connected
                 World.Time.UpdateClient(this);
             }
-            peer?.Update();
+            peer?.UpdateReceive();
+            peer?.UpdateSent();
         }
 
         internal void RegisterHostHandlers()
@@ -302,18 +305,18 @@ namespace Mirage
             if (authenticator != null)
             {
                 authenticator.OnClientAuthenticated -= OnAuthenticated;
-                Connected += authenticator.ClientAuthenticate;
+                Connected.RemoveListener(authenticator.ClientAuthenticate);
             }
             else
             {
                 // if no authenticator, consider connection as authenticated
-                Connected += OnAuthenticated;
+                Connected.RemoveListener(OnAuthenticated);
             }
 
             Player = null;
-            //_connected.Reset();
-            //_authenticated.Reset();
-            //_disconnected.Reset();
+            _connected.Reset();
+            _authenticated.Reset();
+            _disconnected.Reset();
 
             if (peer != null)
             {
@@ -345,7 +348,7 @@ namespace Mirage
 
             public void ReceiveMessage(IConnection connection, ArraySegment<byte> message)
             {
-                //logger.Assert(this.connection == connection);
+                logger.Assert(this.connection == connection);
                 messageHandler.HandleMessage(player, message);
             }
         }

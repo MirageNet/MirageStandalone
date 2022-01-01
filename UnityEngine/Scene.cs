@@ -1,24 +1,21 @@
+using System;
+
 namespace UnityEngine
 {
     public struct Scene
     {
-        private int m_Handle;
-
-        public int handle { get { return m_Handle; } }
-
-        public string path;
-        public bool IsValid()
-        {
-            return true;
-        }
-
-        private string _name;
+        public int handle => throw new NotSupportedException();
+        public string path => throw new NotSupportedException();
 
         public string name
         {
-            get { return _name; }
-            set { _name = value; }
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
         }
 
+        public bool IsValid()
+        {
+            return false;
+        }
     }
 }

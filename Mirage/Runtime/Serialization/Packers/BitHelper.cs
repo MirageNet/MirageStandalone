@@ -23,7 +23,7 @@ SOFTWARE.
 */
 
 using System;
-//using UnityEngine;
+using UnityEngine;
 
 namespace Mirage.Serialization
 {
@@ -40,8 +40,7 @@ namespace Mirage.Serialization
         /// <returns></returns>
         public static int BitCount(float max, float precision)
         {
-            return 0;
-            //return Mathf.FloorToInt(Mathf.Log(2 * max / precision, 2)) + 1;
+            return Mathf.FloorToInt(Mathf.Log(2 * max / precision, 2)) + 1;
         }
 
         /// <summary>
