@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using Mirage.Serialization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
-using UnityEditor;
 using UnityEngine;
 
 namespace Mirage.Weaver
@@ -261,10 +260,11 @@ namespace Mirage.Weaver
 
             if (IsEditorAssembly(module))
             {
-                // editor assembly,  add InitializeOnLoadMethod too.  Useful for the editor tests
-                ConstructorInfo initializeOnLoadConstructor = typeof(InitializeOnLoadMethodAttribute).GetConstructor(new Type[0]);
-                var initializeCustomConstructorRef = new CustomAttribute(module.ImportReference(initializeOnLoadConstructor));
-                rwInitializer.CustomAttributes.Add(initializeCustomConstructorRef);
+                throw new NotSupportedException("Editor assemblies not supported");
+                //// editor assembly,  add InitializeOnLoadMethod too.  Useful for the editor tests
+                //ConstructorInfo initializeOnLoadConstructor = typeof(InitializeOnLoadMethodAttribute).GetConstructor(new Type[0]);
+                //var initializeCustomConstructorRef = new CustomAttribute(module.ImportReference(initializeOnLoadConstructor));
+                //rwInitializer.CustomAttributes.Add(initializeCustomConstructorRef);
             }
 
             ILProcessor worker = rwInitializer.Body.GetILProcessor();
