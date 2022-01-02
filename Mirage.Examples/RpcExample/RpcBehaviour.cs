@@ -1,8 +1,8 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Mirage.Examples.RpcExample
 {
-    public class ExampleBehaviour : NetworkBehaviour
+    public class RpcBehaviour : NetworkBehaviour
     {
         [ClientRpc]
         public void HelloWorld()
