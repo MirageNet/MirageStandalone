@@ -14,6 +14,7 @@ namespace UnityEngine
         }
 
         public static void LogWarning(string message) => unityLogger.LogWarning(message);
+        public static void LogError(string message) => unityLogger.LogError(message);
     }
     public static class Time
     {
@@ -64,5 +65,12 @@ namespace UnityEngine
         void LogError(object message);
 
         void LogException(Exception ex);
+    }
+
+    public static class ILoggerExtensions
+    {
+        public static void Log(this ILogger logger, object message, Object _context) => logger.Log(message);
+        public static void LogWarning(this ILogger logger, object message, Object _context) => logger.LogWarning(message);
+        public static void LogError(this ILogger logger, object message, Object _context) => logger.LogError(message);
     }
 }

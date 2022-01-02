@@ -30,6 +30,12 @@ namespace UnityEngine
 
     [AttributeUsage(AttributeTargets.Field)]
     public class TooltipAttribute : Attribute { public TooltipAttribute(string _) { } }
+
+    [AttributeUsage(AttributeTargets.Field)]
+    public class HideInInspector : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Field)]
+    public class RangeAttribute : Attribute { public RangeAttribute(float _, float __) { } }
 }
 
 namespace UnityEngine.Serialization

@@ -19,4 +19,6 @@ namespace UnityEngine
 
         public static event Action quitting;
     }
+
+
 }
