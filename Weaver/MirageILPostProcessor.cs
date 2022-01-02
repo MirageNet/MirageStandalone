@@ -1,3 +1,4 @@
+#if !NETCOREAPP
 using System.IO;
 using System.Linq;
 using Mono.Cecil;
@@ -47,3 +48,4 @@ namespace Mirage.Weaver
             compiledAssembly.References.Any(filePath => Path.GetFileNameWithoutExtension(filePath) == RuntimeAssemblyName);
     }
 }
+#endif

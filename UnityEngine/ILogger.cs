@@ -13,6 +13,7 @@ namespace UnityEngine
                 throw new Exception($"Assert Failed: {msg}");
         }
 
+        public static void Log(string message) => unityLogger.Log(message);
         public static void LogWarning(string message) => unityLogger.LogWarning(message);
         public static void LogError(string message) => unityLogger.LogError(message);
     }
