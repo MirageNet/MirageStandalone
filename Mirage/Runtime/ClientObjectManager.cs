@@ -618,16 +618,17 @@ namespace Mirage
         /// <returns>the task that will be completed when the result is in, and the id to use in the request</returns>
         internal (UniTask<T> task, int replyId) CreateReplyTask<T>()
         {
-            int newReplyId = replyId++;
-            var completionSource = AutoResetUniTaskCompletionSource<T>.Create();
-            void Callback(NetworkReader reader)
-            {
-                T result = reader.Read<T>();
-                completionSource.TrySetResult(result);
-            }
+            throw new NotSupportedException();
+            //int newReplyId = replyId++;
+            //var completionSource = AutoResetUniTaskCompletionSource<T>.Create();
+            //void Callback(NetworkReader reader)
+            //{
+            //    T result = reader.Read<T>();
+            //    completionSource.TrySetResult(result);
+            //}
 
-            callbacks.Add(newReplyId, Callback);
-            return (completionSource.Task, newReplyId);
+            //callbacks.Add(newReplyId, Callback);
+            //return (completionSource.Task, newReplyId);
         }
     }
 }

@@ -231,7 +231,7 @@ namespace Mirage
 #else
             // TODO: remove this bit once Unity drops support for 2019 LTS
             GetComponentsInParent<NetworkIdentity>(true, networkIdentityGetComponentCacheList);
-            var identity = networkIdentityGetComponentCacheList[0];
+            NetworkIdentity identity = networkIdentityGetComponentCacheList[0];
 #endif
 
             return identity;
