@@ -5,7 +5,7 @@ namespace UnityEngine
 {
     public static class Debug
     {
-        public static ILogger unityLogger => throw new NotSupportedException();
+        public static ILogger unityLogger { get; set; }
 
         public static void Assert(bool condition, string msg)
         {
