@@ -1,6 +1,8 @@
 using System;
 using System.Threading.Tasks;
+using Mirage.Logging;
 using Mirage.Sockets.Udp;
+using UnityEngine;
 
 namespace Mirage.Standalone
 {
@@ -13,6 +15,7 @@ namespace Mirage.Standalone
 
         public StandaloneRunner()
         {
+            Debug.unityLogger = new StandaloneLogger();
             InitializeReadWrite.RunMethods();
             Update();
 
