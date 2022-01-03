@@ -78,30 +78,19 @@ namespace UnityEngine
 
         private static bool _equals(Object A, Object B)
         {
-            if (B is Object other)
-            {
-                // false if only 1 is destroyed
-                if (other.Destroyed != A.Destroyed)
-                {
-                    return false;
-                }
+            bool AisNull = A is null || A.Destroyed;
+            bool BisNull = B is null || B.Destroyed;
 
-                // true if both destroyed
-                // todo is this correct?
-                if (other.Destroyed && A.Destroyed)
-                {
-                    return true;
-                }
+            // both null, equal
+            if (AisNull && BisNull)
+                return true;
 
-                // if neither destroyed, then just check reference
-                return ReferenceEquals(A, other);
-            }
-            else
-            {
-                // if other is not Object,
-                //   then true if obj is null and this is destroyed
-                return B == null && A.Destroyed;
-            }
+            // only 1 null, not equal
+            if (AisNull != BisNull)
+                return false;
+
+            // if neither null, then just check reference
+            return ReferenceEquals(A, B);
         }
 
         public static implicit operator bool(Object a)
