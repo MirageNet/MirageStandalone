@@ -50,8 +50,8 @@ namespace UnityEngine
         {
             const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
             MethodInfo method = GetType().GetMethod(name, flags);
-
-            method.Invoke(this, Array.Empty<object>());
+            if (method != null)
+                method.Invoke(this, Array.Empty<object>());
         }
 
         public override int GetHashCode()
