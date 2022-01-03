@@ -60,41 +60,57 @@ namespace UnityEngine
         }
         public override bool Equals(object obj)
         {
-            if (obj is Object other)
+            if (obj is Object uObj)
+                return _equals(this, uObj);
+            else if (obj is null)
+                return _equals(this, null);
+            else
+                return false;
+        }
+        public static bool operator ==(Object a, Object b)
+        {
+            return _equals(a, b);
+        }
+        public static bool operator !=(Object a, Object b)
+        {
+            return !_equals(a, b);
+        }
+
+        private static bool _equals(Object A, Object B)
+        {
+            if (B is Object other)
             {
                 // false if only 1 is destroyed
-                if (other.Destroyed != Destroyed)
+                if (other.Destroyed != A.Destroyed)
                 {
                     return false;
                 }
 
                 // true if both destroyed
                 // todo is this correct?
-                if (other.Destroyed && Destroyed)
+                if (other.Destroyed && A.Destroyed)
                 {
                     return true;
                 }
 
                 // if neither destroyed, then just check reference
-                return ReferenceEquals(this, other);
+                return ReferenceEquals(A, other);
             }
             else
             {
                 // if other is not Object,
                 //   then true if obj is null and this is destroyed
-                return obj == null && Destroyed;
+                return B == null && A.Destroyed;
             }
         }
-        public static bool operator ==(Object a, Object b)
-        {
-            return a.Equals(b);
-        }
-        public static bool operator !=(Object a, Object b)
-        {
-            return !a.Equals(b);
-        }
+
         public static implicit operator bool(Object a)
         {
+            if (ReferenceEquals(a, null))
+            {
+                return false;
+            }
+
             return !a.Destroyed;
         }
     }
