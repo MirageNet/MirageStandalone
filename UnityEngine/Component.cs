@@ -22,5 +22,10 @@ namespace UnityEngine
 
 
         public bool TryGetComponent<T>(out T component) where T : class => gameObject.TryGetComponent(out component);
+
+        public Component()
+        {
+            Invoke("Awake");
+        }
     }
 }
