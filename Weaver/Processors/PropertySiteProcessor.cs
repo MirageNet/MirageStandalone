@@ -20,6 +20,8 @@ namespace Mirage.Weaver
 
         private static bool WeavedMethods(MethodDefinition md) =>
                         md.Name != ".cctor" &&
+                        md.Name != NetworkBehaviourProcessor.ProcessedFunctionName &&
+                        !md.Name.StartsWith(RpcProcessor.InvokeRpcPrefix) &&
                         !md.IsConstructor;
 
         // replaces syncvar write access with the NetworkXYZ.get property calls

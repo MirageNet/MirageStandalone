@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using UnityEngine;
 
 namespace Mirage.SocketLayer
 {
@@ -332,7 +333,7 @@ namespace Mirage.SocketLayer
                 throw new ArgumentException($"Message is bigger than MTU for fragmentation, max Reliable fragmented size is {maxFragmentsMessageSize}", nameof(length));
             }
 
-            int fragments = (int)Math.Ceiling(length / (float)SizePerFragment);
+            int fragments = Mathf.CeilToInt(length / (float)SizePerFragment);
 
             int remaining = length;
             for (int i = 0; i < fragments; i++)

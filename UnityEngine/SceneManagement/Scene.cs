@@ -1,6 +1,6 @@
 using System;
 
-namespace UnityEngine
+namespace UnityEngine.SceneManagement
 {
     public struct Scene
     {
@@ -17,5 +17,8 @@ namespace UnityEngine
         {
             return false;
         }
+
+        public static bool operator ==(Scene a, Scene b) => throw new NotSupportedException();
+        public static bool operator !=(Scene a, Scene b) => throw new NotSupportedException();
     }
 }

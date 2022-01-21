@@ -26,7 +26,7 @@ namespace Mirage
         static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkClient));
 
         public bool EnablePeerMetrics;
-        [TooltipAttribute("Sequence size of buffer in bits.\n10 => array size 1024 => ~17 seconds at 60hz")]
+        [Tooltip("Sequence size of buffer in bits.\n10 => array size 1024 => ~17 seconds at 60hz")]
         public int MetricsSize = 10;
         public Metrics Metrics { get; private set; }
 
@@ -35,14 +35,14 @@ namespace Mirage
         /// </summary>
         public Config PeerConfig { get; set; }
 
-        [TooltipAttribute("Creates Socket for Peer to use")]
+        [Tooltip("Creates Socket for Peer to use")]
         public SocketFactory SocketFactory;
 
         public bool DisconnectOnException = true;
 
         Peer peer;
 
-        [TooltipAttribute("Authentication component attached to this object")]
+        [Tooltip("Authentication component attached to this object")]
         public NetworkAuthenticator authenticator;
 
         [Header("Events")]
@@ -148,6 +148,8 @@ namespace Mirage
 
         void ThrowIfSocketIsMissing()
         {
+            if (SocketFactory is null)
+                SocketFactory = GetComponent<SocketFactory>();
             if (SocketFactory == null)
                 throw new InvalidOperationException($"{nameof(SocketFactory)} could not be found for ${nameof(NetworkServer)}");
         }
@@ -231,6 +233,12 @@ namespace Mirage
         internal void OnAuthenticated(INetworkPlayer player)
         {
             _authenticated.Invoke(player);
+        }
+
+        private void OnDestroy()
+        {
+            if (Active)
+                Disconnect();
         }
 
         /// <summary>

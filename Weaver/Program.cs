@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using Unity.CompilationPipeline.Common.ILPostProcessing;
 
 namespace Mirage.Weaver
 {
@@ -20,7 +21,7 @@ namespace Mirage.Weaver
 
                 // TODO: use proper Assembly paths 
                 string[] references = asm.GetReferencedAssemblies().Select(a => Path.Combine(Path.GetDirectoryName(dllPath), a.Name)).ToArray();
-                var compiledAssembly = new CompiledAssembly2(dllPath, references, new string[0]);
+                var compiledAssembly = new CompiledAssembly(dllPath, references, new string[0]);
                 var weaverLogger = new WeaverLogger();
                 var weaver = new Weaver(weaverLogger);
                 AssemblyDefinition assemblyDefinition = weaver.Weave(compiledAssembly);
@@ -55,10 +56,9 @@ namespace Mirage.Weaver
         }
     }
 
-
-    public class CompiledAssembly2 : ICompiledAssembly
+    public class CompiledAssembly : ICompiledAssembly
     {
-        public CompiledAssembly2(string dllPath, string[] references, string[] defines)
+        public CompiledAssembly(string dllPath, string[] references, string[] defines)
         {
             Name = Path.GetFileName(dllPath);
             PdbPath = $"{Path.GetDirectoryName(dllPath)}/{Path.GetFileNameWithoutExtension(dllPath)}.pdb";
@@ -75,24 +75,5 @@ namespace Mirage.Weaver
         public string PdbPath { get; }
         public string[] References { get; }
         public string[] Defines { get; }
-    }
-
-    public interface ICompiledAssembly
-    {
-        InMemoryAssembly InMemoryAssembly { get; }
-        string Name { get; }
-        string[] References { get; }
-        string[] Defines { get; }
-    }
-    public class InMemoryAssembly
-    {
-        public InMemoryAssembly(byte[] peData, byte[] pdbData)
-        {
-            PeData = peData;
-            PdbData = pdbData;
-        }
-
-        public byte[] PeData { get; }
-        public byte[] PdbData { get; }
     }
 }

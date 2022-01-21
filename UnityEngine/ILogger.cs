@@ -5,7 +5,7 @@ namespace UnityEngine
 {
     public static class Debug
     {
-        public static ILogger unityLogger => throw new NotSupportedException();
+        public static ILogger unityLogger { get; set; }
 
         public static void Assert(bool condition, string msg)
         {
@@ -13,7 +13,9 @@ namespace UnityEngine
                 throw new Exception($"Assert Failed: {msg}");
         }
 
+        public static void Log(string message) => unityLogger.Log(message);
         public static void LogWarning(string message) => unityLogger.LogWarning(message);
+        public static void LogError(string message) => unityLogger.LogError(message);
     }
     public static class Time
     {
@@ -64,5 +66,12 @@ namespace UnityEngine
         void LogError(object message);
 
         void LogException(Exception ex);
+    }
+
+    public static class ILoggerExtensions
+    {
+        public static void Log(this ILogger logger, object message, Object _context) => logger.Log(message);
+        public static void LogWarning(this ILogger logger, object message, Object _context) => logger.LogWarning(message);
+        public static void LogError(this ILogger logger, object message, Object _context) => logger.LogError(message);
     }
 }

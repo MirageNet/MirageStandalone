@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using MethodAttributes = Mono.Cecil.MethodAttributes;
@@ -6,11 +7,66 @@ using TypeAttributes = Mono.Cecil.TypeAttributes;
 
 namespace Mirage.Weaver
 {
+    public enum RemoteCallType
+    {
+        ServerRpc,
+        ClientRpc
+    }
+
     /// <summary>
     /// processes SyncVars, Cmds, Rpcs, etc. of NetworkBehaviours
     /// </summary>
     class NetworkBehaviourProcessor
     {
+        readonly TypeDefinition netBehaviourSubclass;
+        private readonly IWeaverLogger logger;
+        readonly ServerRpcProcessor serverRpcProcessor;
+        readonly ClientRpcProcessor clientRpcProcessor;
+        readonly SyncVarProcessor syncVarProcessor;
+        readonly SyncObjectProcessor syncObjectProcessor;
+
+        public NetworkBehaviourProcessor(TypeDefinition td, Readers readers, Writers writers, PropertySiteProcessor propertySiteProcessor, IWeaverLogger logger)
+        {
+            Weaver.DebugLog(td, "NetworkBehaviourProcessor");
+            netBehaviourSubclass = td;
+            this.logger = logger;
+            serverRpcProcessor = new ServerRpcProcessor(netBehaviourSubclass.Module, readers, writers, logger);
+            clientRpcProcessor = new ClientRpcProcessor(netBehaviourSubclass.Module, readers, writers, logger);
+            syncVarProcessor = new SyncVarProcessor(netBehaviourSubclass.Module, readers, writers, propertySiteProcessor);
+            syncObjectProcessor = new SyncObjectProcessor(readers, writers, logger);
+        }
+
+        // return true if modified
+        public bool Process()
+        {
+            // only process once
+            if (WasProcessed(netBehaviourSubclass))
+            {
+                return false;
+            }
+            Weaver.DebugLog(netBehaviourSubclass, $"Found NetworkBehaviour {netBehaviourSubclass.FullName}");
+
+            Weaver.DebugLog(netBehaviourSubclass, "Process Start");
+            MarkAsProcessed(netBehaviourSubclass);
+
+            try
+            {
+                syncVarProcessor.ProcessSyncVars(netBehaviourSubclass, logger);
+            }
+            catch (NetworkBehaviourException e)
+            {
+                logger.Error(e);
+            }
+
+            syncObjectProcessor.ProcessSyncObjects(netBehaviourSubclass);
+
+            ProcessRpcs();
+
+            Weaver.DebugLog(netBehaviourSubclass, "Process Done");
+            return true;
+        }
+
+        #region mark / check type as processed
         public const string ProcessedFunctionName = "MirageProcessed";
 
         // by adding an empty MirageProcessed() function
@@ -27,6 +83,69 @@ namespace Mirage.Weaver
                 ILProcessor worker = versionMethod.Body.GetILProcessor();
                 worker.Append(worker.Create(OpCodes.Ret));
             }
+        }
+        #endregion
+
+        void RegisterRpcs()
+        {
+            Weaver.DebugLog(netBehaviourSubclass, "  GenerateConstants ");
+
+            AddToStaticConstructor(netBehaviourSubclass, (worker) =>
+            {
+                serverRpcProcessor.RegisterServerRpcs(worker);
+                clientRpcProcessor.RegisterClientRpcs(worker);
+            });
+        }
+
+        void ProcessRpcs()
+        {
+            var names = new HashSet<string>();
+
+            // copy the list of methods because we will be adding methods in the loop
+            var methods = new List<MethodDefinition>(netBehaviourSubclass.Methods);
+            // find ServerRpc and RPC functions
+            foreach (MethodDefinition md in methods)
+            {
+                bool isRpc = CheckAndProcessRpc(md);
+
+                if (isRpc)
+                {
+                    if (names.Contains(md.Name))
+                    {
+                        logger.Error($"Duplicate Rpc name {md.Name}", md);
+                    }
+                    names.Add(md.Name);
+                }
+            }
+
+            RegisterRpcs();
+        }
+
+        private bool CheckAndProcessRpc(MethodDefinition md)
+        {
+            try
+            {
+                if (md.TryGetCustomAttribute<ServerRpcAttribute>(out CustomAttribute serverAttribute))
+                {
+                    if (md.HasCustomAttribute<ClientRpcAttribute>()) throw new RpcException("Method should not have both ServerRpc and ClientRpc", md);
+
+                    // todo make processRpc return the found Rpc instead of saving it to hidden list
+                    serverRpcProcessor.ProcessRpc(md, serverAttribute);
+                    return true;
+                }
+                else if (md.TryGetCustomAttribute<ClientRpcAttribute>(out CustomAttribute clientAttribute))
+                {
+                    // todo make processRpc return the found Rpc instead of saving it to hidden list
+                    clientRpcProcessor.ProcessRpc(md, clientAttribute);
+                    return true;
+                }
+            }
+            catch (RpcException e)
+            {
+                logger.Error(e);
+            }
+
+            return false;
         }
 
         /// <summary>

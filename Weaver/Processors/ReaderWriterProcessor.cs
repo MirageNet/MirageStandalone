@@ -78,10 +78,10 @@ namespace Mirage.Weaver
         {
             var types = new List<TypeDefinition>(module.Types);
 
-            foreach (TypeDefinition klass in types)
-            {
-                ProcessClass(klass);
-            }
+            // find all extension methods first, then find message.
+            // we need to do this incase message is defined before the extension class
+            LoadModuleExtensions(types);
+            LoadModuleMessages(types);
 
             // Generate readers and writers
             // find all the Send<> and Register<> calls and generate
@@ -89,13 +89,26 @@ namespace Mirage.Weaver
             CodePass.ForEachInstruction(module, (md, instr, sequencePoint) => GenerateReadersWriters(instr, sequencePoint));
         }
 
+        private void LoadModuleMessages(List<TypeDefinition> types)
+        {
+            foreach (TypeDefinition klass in types)
+            {
+                ProcessClass(klass);
+            }
+        }
+
+        private void LoadModuleExtensions(List<TypeDefinition> types)
+        {
+            foreach (TypeDefinition klass in types)
+            {
+                // extension methods only live in static classes
+                // static classes are represented as sealed and abstract
+                extensionHelper.RegisterExtensionMethodsInType(klass);
+            }
+        }
+
         private void ProcessClass(TypeDefinition klass)
         {
-            // extension methods only live in static classes
-            // static classes are represented as sealed and abstract
-            extensionHelper.RegisterExtensionMethodsInType(klass);
-
-
             if (klass.HasCustomAttribute<NetworkMessageAttribute>())
             {
                 readers.TryGetFunction(klass, null);
@@ -235,7 +248,6 @@ namespace Mirage.Weaver
         /// <param name="currentAssembly"></param>
         public void InitializeReaderAndWriters()
         {
-            Console.WriteLine("Initialize readers writers");
             MethodDefinition rwInitializer = module.GeneratedClass().AddMethod(
                 "InitReadWriters",
                 Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static);
@@ -246,13 +258,14 @@ namespace Mirage.Weaver
             customAttributeRef.ConstructorArguments.Add(new CustomAttributeArgument(module.ImportReference<RuntimeInitializeLoadType>(), RuntimeInitializeLoadType.BeforeSceneLoad));
             rwInitializer.CustomAttributes.Add(customAttributeRef);
 
-            //if (IsEditorAssembly(module))
-            //{
-            //    // editor assembly,  add InitializeOnLoadMethod too.  Useful for the editor tests
-            //    ConstructorInfo initializeOnLoadConstructor = typeof(InitializeOnLoadMethodAttribute).GetConstructor(new Type[0]);
-            //    var initializeCustomConstructorRef = new CustomAttribute(module.ImportReference(initializeOnLoadConstructor));
-            //    rwInitializer.CustomAttributes.Add(initializeCustomConstructorRef);
-            //}
+            if (IsEditorAssembly(module))
+            {
+                throw new NotSupportedException("Editor assemblies not supported");
+                //// editor assembly,  add InitializeOnLoadMethod too.  Useful for the editor tests
+                //ConstructorInfo initializeOnLoadConstructor = typeof(InitializeOnLoadMethodAttribute).GetConstructor(new Type[0]);
+                //var initializeCustomConstructorRef = new CustomAttribute(module.ImportReference(initializeOnLoadConstructor));
+                //rwInitializer.CustomAttributes.Add(initializeCustomConstructorRef);
+            }
 
             ILProcessor worker = rwInitializer.Body.GetILProcessor();
 

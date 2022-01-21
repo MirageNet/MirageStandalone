@@ -3,27 +3,39 @@ using System.Net;
 using System.Net.Sockets;
 using Mirage.SocketLayer;
 using NanoSockets;
+using UnityEngine;
 
 namespace Mirage.Sockets.Udp
 {
     public enum SocketLib { Automatic, Native, Managed };
 
-    public sealed class UdpSocketFactory : SocketFactory
+    public sealed class UdpSocketFactory : SocketFactory, IHasAddress, IHasPort
     {
         public string Address = "localhost";
         public ushort Port = 7777;
 
-        //[Tooltip("Allows you to set which Socket implementation you want to use.\nAutomatic will use native (NanoSockets) on supported platforms (Windows, Mac & Linux).")]
+        [Tooltip("Allows you to set which Socket implementation you want to use.\nAutomatic will use native (NanoSockets) on supported platforms (Windows, Mac & Linux).")]
         public SocketLib SocketLib;
 
-        //[Header("NanoSocket options")]
+        [Header("NanoSocket options")]
         public int BufferSize = 256 * 1024;
 
-        bool useNanoSocket = false;//=> SocketLib == SocketLib.Native || (SocketLib == SocketLib.Automatic && IsDesktop);
+        bool useNanoSocket => SocketLib == SocketLib.Native || (SocketLib == SocketLib.Automatic && IsDesktop);
+
+        string IHasAddress.Address
+        {
+            get => Address;
+            set => Address = value;
+        }
+        int IHasPort.Port
+        {
+            get => Port;
+            set => Port = checked((ushort)value);
+        }
 
         static int initCount;
 
-        //[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void ClearCounter()
         {
             initCount = 0;
@@ -33,12 +45,21 @@ namespace Mirage.Sockets.Udp
         {
             if (!useNanoSocket) return;
 
-            if (initCount == 0)
+            try
             {
-                UDP.Initialize();
-            }
+                if (initCount == 0)
+                {
+                    UDP.Initialize();
+                }
 
-            initCount++;
+                initCount++;
+            }
+            catch (DllNotFoundException)
+            {
+                Debug.LogWarning("Nanosocket dll not found, Using c# Managed Socket instead");
+                SocketLib = SocketLib.Managed;
+                return;
+            }
         }
 
         void OnDestroy()
@@ -108,18 +129,18 @@ namespace Mirage.Sockets.Udp
 
         void ThrowIfNotSupported()
         {
-            //if (IsWebgl)
-            //{
-            //    throw new NotSupportedException("Udp Socket can not be created in Webgl builds, Use WebSocket instead");
-            //}
+            if (IsWebgl)
+            {
+                throw new NotSupportedException("Udp Socket can not be created in Webgl builds, Use WebSocket instead");
+            }
         }
 
-        //private static bool IsWebgl => Application.platform == RuntimePlatform.WebGLPlayer;
-        //private static bool IsDesktop =>
-        //    Application.platform == RuntimePlatform.LinuxPlayer
-        //    || Application.platform == RuntimePlatform.OSXPlayer
-        //    || Application.platform == RuntimePlatform.WindowsPlayer
-        //    || Application.isEditor;
+        private static bool IsWebgl => Application.platform == RuntimePlatform.WebGLPlayer;
+        private static bool IsDesktop =>
+            Application.platform == RuntimePlatform.LinuxPlayer
+            || Application.platform == RuntimePlatform.OSXPlayer
+            || Application.platform == RuntimePlatform.WindowsPlayer
+            || Application.isEditor;
     }
 
     public class EndPointWrapper : IEndPoint
