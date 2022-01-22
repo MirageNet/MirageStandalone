@@ -3,7 +3,7 @@ namespace Mirage
     /// <summary>
     /// Static methods to bypass internal
     /// <para>
-    /// this class only exists so that we can have the samme NetworkServer class in main repo
+    /// this class only exists so that we can have the same NetworkServer class in main repo
     /// </para>
     /// </summary>
     public static class Updater
