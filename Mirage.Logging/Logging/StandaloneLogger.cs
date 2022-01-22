@@ -70,7 +70,13 @@ namespace Mirage.Logging
             if (IsLogTypeAllowed(logType))
             {
                 Console.ForegroundColor = logTypeToColor[(int)logType];
-                Console.WriteLine(string.Format(format, args));
+
+                // only use format if there are args
+                string msg = (args != null && args.Length > 0)
+                    ? string.Format(format, args)
+                    : format;
+
+                Console.WriteLine(msg);
                 Console.ResetColor();
             }
         }
