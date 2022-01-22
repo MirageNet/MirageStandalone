@@ -15,6 +15,7 @@ namespace Mirage.ListServer.MasterServer
 
         static void ConfigureLog()
         {
+            Debug.unityLogger = new StandaloneLogger();
             LogFactory.GetLogger<SocketLayer.Peer>().filterLogType = LogType.Warning;
             LogFactory.GetLogger<NetworkTime>().filterLogType = LogType.Warning;
         }
