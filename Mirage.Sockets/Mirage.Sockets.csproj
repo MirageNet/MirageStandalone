@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Mirage.SocketLayer\Mirage.SocketLayer.csproj" />
+    <ProjectReference Include="..\UnityEngine\FakeUnityEngine.csproj" />
   </ItemGroup>
 
 </Project>

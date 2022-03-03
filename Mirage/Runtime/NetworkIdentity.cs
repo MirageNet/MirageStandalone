@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Mirage.Events;
 using Mirage.Logging;
-using Mirage.RemoteCalls;
 using Mirage.Serialization;
 using UnityEngine;
 using UnityEngine.Serialization;
@@ -193,6 +192,8 @@ namespace Mirage
         /// <summary>
         /// The ServerObjectManager is present only for server/host instances.
         /// </summary>
+        [ReadOnlyInspector]
+        [Tooltip("Reference to Server set after the object is spawned. Used when debugging to see which server this object belongs to.")]
         public ServerObjectManager ServerObjectManager;
 
         /// <summary>
@@ -203,6 +204,8 @@ namespace Mirage
         /// <summary>
         /// The ClientObjectManager is present only for client instances.
         /// </summary>
+        [ReadOnlyInspector]
+        [Tooltip("Reference to Client set after the object is spawned. Used when debugging to see which client this object belongs to.")]
         public ClientObjectManager ClientObjectManager;
 
         INetworkPlayer _owner;
@@ -509,18 +512,18 @@ namespace Mirage
         internal void NotifyAuthority()
         {
             if (!hadAuthority && HasAuthority)
-                StartAuthority();
+                CallStartAuthority();
             if (hadAuthority && !HasAuthority)
-                StopAuthority();
+                CallStopAuthority();
             hadAuthority = HasAuthority;
         }
 
-        internal void StartAuthority()
+        internal void CallStartAuthority()
         {
             _onAuthorityChanged.Invoke(true);
         }
 
-        internal void StopAuthority()
+        internal void CallStopAuthority()
         {
             _onAuthorityChanged.Invoke(false);
         }
@@ -702,28 +705,6 @@ namespace Mirage
                 }
             }
 
-        }
-
-        /// <summary>
-        /// Helper function to handle Command/Rpc
-        /// </summary>
-        /// <param name="componentIndex"></param>
-        /// <param name="functionHash"></param>
-        /// <param name="invokeType"></param>
-        /// <param name="reader"></param>
-        /// <param name="senderPlayer"></param>
-        internal void HandleRemoteCall(Skeleton skeleton, int componentIndex, NetworkReader reader, INetworkPlayer senderPlayer = null, int replyId = 0)
-        {
-            // find the right component to invoke the function on
-            if (componentIndex >= 0 && componentIndex < NetworkBehaviours.Length)
-            {
-                NetworkBehaviour invokeComponent = NetworkBehaviours[componentIndex];
-                skeleton?.Invoke(reader, invokeComponent, senderPlayer, replyId);
-            }
-            else
-            {
-                throw new MethodInvocationException($"Invalid component {componentIndex} in {this} for RPC {skeleton.invokeFunction}");
-            }
         }
 
         internal void SetServerValues(NetworkServer networkServer, ServerObjectManager serverObjectManager)

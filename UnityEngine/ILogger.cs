@@ -7,15 +7,18 @@ namespace UnityEngine
     {
         public static ILogger unityLogger { get; set; }
 
-        public static void Assert(bool condition, string msg)
+        public static void Assert(bool condition)
         {
-            if (condition)
-                throw new Exception($"Assert Failed: {msg}");
+            if (condition) unityLogger.LogError("Assertion failed");
         }
-
+        public static void Assert(bool condition, string message)
+        {
+            if (condition) unityLogger.LogError(message);
+        }
         public static void Log(string message) => unityLogger.Log(message);
         public static void LogWarning(string message) => unityLogger.LogWarning(message);
         public static void LogError(string message) => unityLogger.LogError(message);
+        public static void LogException(Exception e) => unityLogger.LogException(e);
     }
     public static class Time
     {

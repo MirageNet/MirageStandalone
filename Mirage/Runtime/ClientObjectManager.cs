@@ -6,6 +6,7 @@ using Mirage.Logging;
 using Mirage.RemoteCalls;
 using Mirage.Serialization;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.Serialization;
 
 namespace Mirage
@@ -26,11 +27,11 @@ namespace Mirage
         internal readonly Dictionary<int, SpawnHandlerDelegate> spawnHandlers = new Dictionary<int, SpawnHandlerDelegate>();
         internal readonly Dictionary<int, UnSpawnDelegate> unspawnHandlers = new Dictionary<int, UnSpawnDelegate>();
 
-        [Header("Prefabs")]
         /// <summary>
         /// List of prefabs that will be registered with the spawning system.
         /// <para>For each of these prefabs, ClientManager.RegisterPrefab() will be automatically invoke.</para>
         /// </summary>
+        [Header("Prefabs")]
         public List<NetworkIdentity> spawnPrefabs = new List<NetworkIdentity>();
 
         /// <summary>
@@ -114,7 +115,7 @@ namespace Mirage
             syncVarReceiver = null;
         }
 
-        void OnFinishedSceneChange(string scenePath, SceneOperation sceneOperation)
+        void OnFinishedSceneChange(Scene scene, SceneOperation sceneOperation)
         {
             Client.World.RemoveDestroyedObjects();
 
@@ -321,7 +322,14 @@ namespace Mirage
 
         void UnSpawn(NetworkIdentity identity)
         {
+            // it is useful to remove authority when destroying the object
+            // this can be useful to clean up stuff after a local player is destroyed
+            // call before StopClient, but dont reset the HasAuthority bool, people might want to use HasAuthority from stopclient or destroy
+            if (identity.HasAuthority)
+                identity.CallStopAuthority();
+
             identity.StopClient();
+
             if (unspawnHandlers.TryGetValue(identity.PrefabHash, out UnSpawnDelegate handler) && handler != null)
             {
                 handler(identity);
@@ -561,21 +569,27 @@ namespace Mirage
 
         internal void OnRpcMessage(RpcMessage msg)
         {
-            if (logger.LogEnabled()) logger.Log("ClientScene.OnRPCMessage hash:" + msg.functionHash + " netId:" + msg.netId);
+            if (logger.LogEnabled()) logger.Log($"ClientScene.OnRPCMessage index:{msg.functionIndex} netId:{msg.netId}");
 
-            Skeleton skeleton = RemoteCallHelper.GetSkeleton(msg.functionHash);
-
-            if (skeleton.invokeType != RpcInvokeType.ClientRpc)
+            if (!Client.World.TryGetIdentity(msg.netId, out NetworkIdentity identity))
             {
-                throw new MethodInvocationException($"Invalid RPC call with id {msg.functionHash}");
+                if (logger.WarnEnabled()) logger.LogWarning($"Spawned object not found when handling ClientRpc message [netId={msg.netId}]");
+                return;
             }
-            if (Client.World.TryGetIdentity(msg.netId, out NetworkIdentity identity))
+
+            NetworkBehaviour behaviour = identity.NetworkBehaviours[msg.componentIndex];
+
+            RemoteCall remoteCall = behaviour.remoteCallCollection.Get(msg.functionIndex);
+
+            if (remoteCall.InvokeType != RpcInvokeType.ClientRpc)
             {
-                using (PooledNetworkReader networkReader = NetworkReaderPool.GetReader(msg.payload))
-                {
-                    networkReader.ObjectLocator = Client.World;
-                    identity.HandleRemoteCall(skeleton, msg.componentIndex, networkReader);
-                }
+                throw new MethodInvocationException($"Invalid RPC call with index {msg.functionIndex}");
+            }
+
+            using (PooledNetworkReader reader = NetworkReaderPool.GetReader(msg.payload))
+            {
+                reader.ObjectLocator = Client.World;
+                remoteCall.Invoke(reader, behaviour, null, 0);
             }
         }
 
@@ -618,17 +632,16 @@ namespace Mirage
         /// <returns>the task that will be completed when the result is in, and the id to use in the request</returns>
         internal (UniTask<T> task, int replyId) CreateReplyTask<T>()
         {
-            throw new NotSupportedException();
-            //int newReplyId = replyId++;
-            //var completionSource = AutoResetUniTaskCompletionSource<T>.Create();
-            //void Callback(NetworkReader reader)
-            //{
-            //    T result = reader.Read<T>();
-            //    completionSource.TrySetResult(result);
-            //}
+            int newReplyId = replyId++;
+            var completionSource = AutoResetUniTaskCompletionSource<T>.Create();
+            void Callback(NetworkReader reader)
+            {
+                T result = reader.Read<T>();
+                completionSource.TrySetResult(result);
+            }
 
-            //callbacks.Add(newReplyId, Callback);
-            //return (completionSource.Task, newReplyId);
+            callbacks.Add(newReplyId, Callback);
+            return (completionSource.Task, newReplyId);
         }
     }
 }

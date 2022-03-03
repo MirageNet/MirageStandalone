@@ -100,4 +100,12 @@ namespace Cysharp.Threading.Tasks
         {
         }
     }
+    public class AutoResetUniTaskCompletionSource<T>
+    {
+        public UniTask<T> Task => throw new NotSupportedException();
+
+        public static AutoResetUniTaskCompletionSource<T> Create() => throw new NotSupportedException();
+
+        public bool TrySetResult(T result) => throw new NotSupportedException();
+    }
 }
