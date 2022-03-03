@@ -81,7 +81,7 @@ namespace Mirage.Serialization
         /// some service object that can find objects by net id
         /// </summary>
         // todo try move this somewhere else
-        public IObjectLocator ObjectLocator { get; internal set; }
+        public IObjectLocator ObjectLocator { get; set; }
 
 
         public NetworkReader() { }
@@ -366,11 +366,10 @@ namespace Mirage.Serialization
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="value"></param>
-        /// <param name="byteSize"></param>
-        public void PadAndCopy<T>(int byteSize, out T value) where T : unmanaged
+        public void PadAndCopy<T>(out T value) where T : unmanaged
         {
             PadToByte();
-            int newPosition = bitPosition + (64 * byteSize);
+            int newPosition = bitPosition + (8 * sizeof(T));
             CheckNewLength(newPosition);
 
             byte* startPtr = ((byte*)longPtr) + (bitPosition >> 3);
