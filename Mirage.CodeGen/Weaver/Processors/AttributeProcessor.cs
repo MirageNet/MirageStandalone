@@ -91,8 +91,7 @@ namespace Mirage.Weaver
         static bool IgnoreMethod(MethodDefinition md)
         {
             return md.Name == ".cctor" ||
-                md.Name == NetworkBehaviourProcessor.ProcessedFunctionName ||
-                md.Name.StartsWith(RpcProcessor.InvokeRpcPrefix);
+                md.Name == NetworkBehaviourProcessor.ProcessedFunctionName;
         }
 
         void ProcessMethodAttributes(MethodDefinition md, FoundType foundType)
@@ -177,7 +176,7 @@ namespace Mirage.Weaver
                     VariableDefinition elementLocal = md.AddLocal(elementType);
 
                     worker.InsertBefore(top, worker.Create(OpCodes.Ldarg, index + offset));
-                    worker.InsertBefore(top, worker.Create(OpCodes.Ldloca_S, elementLocal));
+                    worker.InsertBefore(top, worker.Create(OpCodes.Ldloca, elementLocal));
                     worker.InsertBefore(top, worker.Create(OpCodes.Initobj, elementType));
                     worker.InsertBefore(top, worker.Create(OpCodes.Ldloc, elementLocal));
                     worker.InsertBefore(top, worker.Create(OpCodes.Stobj, elementType));
@@ -191,7 +190,7 @@ namespace Mirage.Weaver
             if (!md.ReturnType.Is(typeof(void)))
             {
                 VariableDefinition returnLocal = md.AddLocal(md.ReturnType);
-                worker.InsertBefore(top, worker.Create(OpCodes.Ldloca_S, returnLocal));
+                worker.InsertBefore(top, worker.Create(OpCodes.Ldloca, returnLocal));
                 worker.InsertBefore(top, worker.Create(OpCodes.Initobj, md.ReturnType));
                 worker.InsertBefore(top, worker.Create(OpCodes.Ldloc, returnLocal));
             }

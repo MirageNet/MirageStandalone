@@ -211,6 +211,39 @@ namespace Mirage.Weaver
             return self.Module.ImportReference(reference);
         }
 
+        public static MethodReference MakeHostInstanceSelfGeneric(this MethodReference self)
+        {
+            TypeReference type = self.DeclaringType;
+            if (!type.HasGenericParameters)
+            {
+                // if type isn't generic we dont need to do anything
+                return self;
+            }
+            else
+            {
+                var genericType = (GenericInstanceType)type.MakeSelfGeneric();
+                return self.MakeHostInstanceGeneric(genericType);
+            }
+        }
+
+        public static TypeReference MakeSelfGeneric(this TypeReference self)
+        {
+            if (!self.HasGenericParameters)
+            {
+                // if type isn't generic we dont need to do anything
+                return self;
+            }
+            else
+            {
+                // make generic instance of type, and give it the generic params as args
+                var genericType = new GenericInstanceType(self);
+                foreach (GenericParameter param in self.GenericParameters)
+                    genericType.GenericArguments.Add(param);
+
+                return genericType;
+            }
+        }
+
         public static bool TryGetCustomAttribute<TAttribute>(this ICustomAttributeProvider method, out CustomAttribute customAttribute)
         {
             foreach (CustomAttribute ca in method.CustomAttributes)
@@ -234,8 +267,12 @@ namespace Mirage.Weaver
 
         public static bool HasCustomAttribute<TAttribute>(this ICustomAttributeProvider attributeProvider)
         {
-            // Linq allocations don't matter in weaver
-            return attributeProvider.CustomAttributes.Any(attr => attr.AttributeType.Is<TAttribute>());
+            return HasCustomAttribute(attributeProvider, typeof(TAttribute));
+        }
+
+        public static bool HasCustomAttribute(this ICustomAttributeProvider attributeProvider, Type t)
+        {
+            return attributeProvider.CustomAttributes.Any(attr => attr.AttributeType.Is(t));
         }
 
         public static T GetField<T>(this CustomAttribute ca, string field, T defaultValue)
@@ -251,6 +288,71 @@ namespace Mirage.Weaver
             return defaultValue;
         }
 
+        /// <summary>
+        /// Imports a field and makes it a member of its orignal type.
+        /// <para>This is needed if orignal type is a generic instance, this will ensure that it stays a member of that instance, eg MyMessage{int}.Value</para>
+        /// </summary>
+        /// <param name="module"></param>
+        /// <param name="field"></param>
+        /// <param name="orignalType">Type that the field orignal belonged to, NOT the resolved type</param>
+        /// <returns></returns>
+        public static FieldReference ImportField(this ModuleDefinition module, FieldDefinition field, TypeReference orignalType)
+        {
+            if (orignalType.Module != module)
+                orignalType = module.ImportReference(orignalType);
+
+            TypeReference fieldType = module.ImportReference(field.FieldType);
+            return new FieldReference(field.Name, fieldType, orignalType);
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="field"></param>
+        /// <param name="orignalType">make sure orignalType is already imported</param>
+        /// <returns></returns>
+        public static TypeReference GetFieldTypeIncludingGeneric(this FieldDefinition field, TypeReference orignalType)
+        {
+            // if generic, then check if it has a type from orignalType 
+            if (field.FieldType.IsGenericParameter && orignalType.IsGenericInstance)
+            {
+                if (FindGenericArgmentWithMatchingName(field.FieldType, orignalType, out TypeReference found))
+                    return found;
+            }
+
+            // if not generic, or no matching found just return its type
+            return field.FieldType;
+        }
+
+        private static bool FindGenericArgmentWithMatchingName(TypeReference genericParameter, TypeReference orignalType, out TypeReference found)
+        {
+            // resolve to get GenericParameters
+            TypeDefinition resolved = orignalType.Resolve();
+
+            string typeName = genericParameter.Name;
+            for (int i = 0; i < resolved.GenericParameters.Count; i++)
+            {
+                GenericParameter param = resolved.GenericParameters[i];
+                if (param.Name == typeName)
+                {
+                    var generic = (GenericInstanceType)orignalType;
+                    found = generic.GenericArguments[i];
+                    return true;
+                }
+            }
+
+            found = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Makes a field part of generic defintion
+        /// <para>
+        /// NOTE: this only works when you need the type to be part of a generic defintion, NOT a generic instance, eg member of List{T} works, but List{int} doesn't
+        /// </para>
+        /// </summary>
+        /// <param name="fd"></param>
+        /// <returns></returns>
         public static FieldReference MakeHostGenericIfNeeded(this FieldReference fd)
         {
             if (fd.DeclaringType.HasGenericParameters)

@@ -8,7 +8,6 @@ using Mono.Cecil.Rocks;
 
 namespace Mirage.Weaver
 {
-
     public class Writers : SerializeFunctionBase
     {
         public Writers(ModuleDefinition module, IWeaverLogger logger) : base(module, logger) { }
@@ -18,11 +17,24 @@ namespace Mirage.Weaver
         protected override Expression<Action> ListExpression => () => CollectionExtensions.WriteList<byte>(default, default);
         protected override Expression<Action> NullableExpression => () => SystemTypesExtensions.WriteNullable<byte>(default, default);
 
+        protected override MethodReference GetGenericFunction()
+        {
+            TypeDefinition genericType = module.ImportReference(typeof(GenericTypesSerializationExtensions)).Resolve();
+            MethodDefinition method = genericType.GetMethod(nameof(GenericTypesSerializationExtensions.Write));
+            return module.ImportReference(method);
+        }
+
         protected override MethodReference GetNetworkBehaviourFunction(TypeReference typeReference)
         {
-            MethodReference writeFunc = module.ImportReference<NetworkWriter>((nw) => nw.WriteNetworkBehaviour(default));
-            Register(typeReference, writeFunc);
-            return writeFunc;
+            WriteMethod writeMethod = GenerateWriterFunc(typeReference);
+            ILProcessor worker = writeMethod.worker;
+
+            worker.Append(worker.Create(OpCodes.Ldarg_0));
+            worker.Append(worker.Create(OpCodes.Ldarg_1));
+            worker.Append(worker.Create(OpCodes.Call, (NetworkWriter writer) => writer.WriteNetworkBehaviour(default)));
+            worker.Append(worker.Create(OpCodes.Ret));
+
+            return writeMethod.definition;
         }
 
         protected override MethodReference GenerateEnumFunction(TypeReference typeReference)
@@ -124,10 +136,18 @@ namespace Mirage.Weaver
         {
             // create copy here because we might add static packer field
             System.Collections.Generic.IEnumerable<FieldDefinition> fields = type.FindAllPublicFields();
-            foreach (FieldDefinition field in fields)
+            foreach (FieldDefinition fieldDef in fields)
             {
-                ValueSerializer valueSerialize = ValueSerializerFinder.GetSerializer(module, field, this, null);
-                valueSerialize.AppendWriteField(module, writerFunc.worker, writerFunc.writerParameter, writerFunc.typeParameter, field);
+                // note:
+                // - fieldDef to get attributes
+                // - fieldType (made non-generic if possible) used to get type (eg if MyMessage<int> and field `T Value` then get writer for int)
+                // - fieldRef (imported) to emit IL codes
+
+                TypeReference fieldType = fieldDef.GetFieldTypeIncludingGeneric(type);
+                FieldReference fieldRef = module.ImportField(fieldDef, type);
+
+                ValueSerializer valueSerialize = ValueSerializerFinder.GetSerializer(module, fieldDef, fieldType, this, null);
+                valueSerialize.AppendWriteField(module, writerFunc.worker, writerFunc.writerParameter, writerFunc.typeParameter, fieldRef);
             }
         }
 
