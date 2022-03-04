@@ -7,7 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Mirage", "Mirage\Mirage.csp
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MirageTests", "MirageTests\MirageTests.csproj", "{BF78519A-26E3-42C5-8A24-0D338EBA4ECB}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Weaver", "Weaver\Weaver.csproj", "{5199C4D1-37C3-4E85-B31B-910E6D496964}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Mirage.CodeGen", "Mirage.CodeGen\Mirage.CodeGen.csproj", "{5199C4D1-37C3-4E85-B31B-910E6D496964}"
 	ProjectSection(ProjectDependencies) = postProject
 		{9AB16B5A-2A1A-43BA-91F6-4F994462F729} = {9AB16B5A-2A1A-43BA-91F6-4F994462F729}
 	EndProjectSection
