@@ -1,9 +1,6 @@
-// all the [ServerRpc] code from NetworkBehaviourProcessor in one place
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Cysharp.Threading.Tasks;
 using Mirage.RemoteCalls;
 using Mirage.Serialization;
 using Mirage.Weaver.Serialization;
@@ -18,18 +15,11 @@ namespace Mirage.Weaver
     /// </summary>
     public class ServerRpcProcessor : RpcProcessor
     {
-        struct ServerRpcMethod
-        {
-            public MethodDefinition stub;
-            public bool requireAuthority;
-            public MethodDefinition skeleton;
-        }
-
-        readonly List<ServerRpcMethod> serverRpcs = new List<ServerRpcMethod>();
-
         public ServerRpcProcessor(ModuleDefinition module, Readers readers, Writers writers, IWeaverLogger logger) : base(module, readers, writers, logger)
         {
         }
+
+        protected override Type AttributeType => typeof(ServerRpcAttribute);
 
         /// <summary>
         /// Replaces the user code with a stub.
@@ -57,7 +47,7 @@ namespace Mirage.Weaver
         /// }
         /// </code>
         /// </remarks>
-        MethodDefinition GenerateStub(MethodDefinition md, CustomAttribute serverRpcAttr, ValueSerializer[] paramSerializers)
+        MethodDefinition GenerateStub(MethodDefinition md, CustomAttribute serverRpcAttr, int rpcIndex, ValueSerializer[] paramSerializers)
         {
             MethodDefinition cmd = SubstituteMethod(md);
 
@@ -78,24 +68,20 @@ namespace Mirage.Weaver
             // write all the arguments that the user passed to the Cmd call
             WriteArguments(worker, md, writer, paramSerializers, RemoteCallType.ServerRpc);
 
-            string cmdName = md.Name;
+            string cmdName = md.FullName;
 
-            int channel = serverRpcAttr.GetField("channel", 0);
-            bool requireAuthority = serverRpcAttr.GetField("requireAuthority", true);
+            int channel = serverRpcAttr.GetField(nameof(ServerRpcAttribute.channel), 0);
+            bool requireAuthority = serverRpcAttr.GetField(nameof(ServerRpcAttribute.requireAuthority), true);
 
+            MethodReference sendMethod = GetSendMethod(md, worker);
 
-            // invoke internal send and return
-            // load 'base.' to call the SendServerRpc function with
+            // ServerRpcSender.Send(this, 12345, writer, channel, requireAuthority)
             worker.Append(worker.Create(OpCodes.Ldarg_0));
-            worker.Append(worker.Create(OpCodes.Ldtoken, md.DeclaringType.ConvertToGenericIfNeeded()));
-            // invokerClass
-            worker.Append(worker.Create(OpCodes.Call, () => Type.GetTypeFromHandle(default)));
-            worker.Append(worker.Create(OpCodes.Ldstr, cmdName));
-            // writer
+            worker.Append(worker.Create(OpCodes.Ldc_I4, rpcIndex));
             worker.Append(worker.Create(OpCodes.Ldloc, writer));
             worker.Append(worker.Create(OpCodes.Ldc_I4, channel));
             worker.Append(worker.Create(requireAuthority ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0));
-            CallSendServerRpc(md, worker);
+            worker.Append(worker.Create(OpCodes.Call, sendMethod));
 
             NetworkWriterHelper.CallRelease(module, worker, writer);
 
@@ -128,28 +114,25 @@ namespace Mirage.Weaver
             });
         }
 
-        private void CallSendServerRpc(MethodDefinition md, ILProcessor worker)
+        MethodReference GetSendMethod(MethodDefinition md, ILProcessor worker)
         {
             if (md.ReturnType.Is(typeof(void)))
             {
-                MethodReference sendServerRpcRef = md.Module.ImportReference<NetworkBehaviour>(nb => nb.SendServerRpcInternal(default, default, default, default, default));
-                worker.Append(worker.Create(OpCodes.Call, sendServerRpcRef));
+                MethodReference sendMethod = md.Module.ImportReference(() => ServerRpcSender.Send(default, default, default, default, default));
+                return sendMethod;
             }
             else
             {
-                // call SendServerRpcWithReturn<T> and return the result
-                Type netBehaviour = typeof(NetworkBehaviour);
-
-                MethodInfo sendMethod = netBehaviour.GetMethods(BindingFlags.NonPublic | BindingFlags.Instance).First(m => m.Name == nameof(NetworkBehaviour.SendServerRpcWithReturn));
+                // call ServerRpcSender.SendWithReturn<T> and return the result
+                MethodInfo sendMethod = typeof(ServerRpcSender).GetMethods(BindingFlags.Public | BindingFlags.Static).First(m => m.Name == nameof(ServerRpcSender.SendWithReturn));
                 MethodReference sendRef = md.Module.ImportReference(sendMethod);
 
                 var returnType = md.ReturnType as GenericInstanceType;
 
-                var instanceMethod = new GenericInstanceMethod(sendRef);
-                instanceMethod.GenericArguments.Add(returnType.GenericArguments[0]);
+                var genericMethod = new GenericInstanceMethod(sendRef);
+                genericMethod.GenericArguments.Add(returnType.GenericArguments[0]);
 
-                worker.Append(worker.Create(OpCodes.Call, instanceMethod));
-
+                return genericMethod;
             }
         }
 
@@ -175,11 +158,12 @@ namespace Mirage.Weaver
         /// </remarks>
         MethodDefinition GenerateSkeleton(MethodDefinition method, MethodDefinition userCodeFunc, ValueSerializer[] paramSerializers)
         {
-            MethodDefinition cmd = method.DeclaringType.AddMethod(SkeletonPrefix + method.Name,
+            string newName = SkeletonMethodName(method);
+            MethodDefinition cmd = method.DeclaringType.AddMethod(newName,
                 MethodAttributes.Family | MethodAttributes.HideBySig | MethodAttributes.Static,
                 userCodeFunc.ReturnType);
 
-            _ = cmd.AddParam(method.DeclaringType, "behaviour");
+            _ = cmd.AddParam<NetworkBehaviour>("behaviour");
             ParameterDefinition readerParameter = cmd.AddParam<NetworkReader>("reader");
             ParameterDefinition senderParameter = cmd.AddParam<INetworkPlayer>("senderConnection");
             _ = cmd.AddParam<int>("replyId");
@@ -189,93 +173,39 @@ namespace Mirage.Weaver
 
             // load `behaviour.`
             worker.Append(worker.Create(OpCodes.Ldarg_0));
+            worker.Append(worker.Create(OpCodes.Castclass, method.DeclaringType.MakeSelfGeneric()));
 
             // read and load args
             ReadArguments(method, worker, readerParameter, senderParameter, false, paramSerializers);
 
             // invoke actual ServerRpc function
-            worker.Append(worker.Create(OpCodes.Callvirt, userCodeFunc));
+            worker.Append(worker.Create(OpCodes.Callvirt, userCodeFunc.MakeHostInstanceSelfGeneric()));
             worker.Append(worker.Create(OpCodes.Ret));
 
             return cmd;
         }
 
-        internal bool Validate(MethodDefinition md)
+        public ServerRpcMethod ProcessRpc(MethodDefinition md, CustomAttribute serverRpcAttr, int rpcIndex)
         {
-            Type unitaskType = typeof(UniTask<int>).GetGenericTypeDefinition();
-            if (!md.ReturnType.Is(typeof(void)) && !md.ReturnType.Is(unitaskType))
-            {
-                logger.Error($"Use UniTask<{ md.ReturnType}> to return values from [ServerRpc]", md);
-                return false;
-            }
+            ValidateMethod(md, RemoteCallType.ServerRpc);
+            ValidateParameters(md, RemoteCallType.ServerRpc);
+            ValidateReturnType(md, RemoteCallType.ServerRpc);
 
-            return true;
-        }
-
-        public void RegisterServerRpcs(ILProcessor cctorWorker)
-        {
-            foreach (ServerRpcMethod cmdResult in serverRpcs)
-            {
-                GenerateRegisterServerRpcDelegate(cctorWorker, cmdResult);
-            }
-        }
-
-        void GenerateRegisterServerRpcDelegate(ILProcessor worker, ServerRpcMethod cmdResult)
-        {
-            MethodDefinition skeleton = cmdResult.skeleton;
-            MethodReference registerMethod = GetRegisterMethod(skeleton);
-            string cmdName = cmdResult.stub.Name;
-            bool requireAuthority = cmdResult.requireAuthority;
-
-            TypeDefinition netBehaviourSubclass = skeleton.DeclaringType;
-            worker.Append(worker.Create(OpCodes.Ldtoken, netBehaviourSubclass.ConvertToGenericIfNeeded()));
-            worker.Append(worker.Create(OpCodes.Call, () => Type.GetTypeFromHandle(default)));
-            worker.Append(worker.Create(OpCodes.Ldstr, cmdName));
-            worker.Append(worker.Create(OpCodes.Ldnull));
-            CreateRpcDelegate(worker, skeleton);
-
-            worker.Append(worker.Create(requireAuthority ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0));
-
-            worker.Append(worker.Create(OpCodes.Call, registerMethod));
-        }
-
-        private static MethodReference GetRegisterMethod(MethodDefinition func)
-        {
-            if (func.ReturnType.Is(typeof(void)))
-                return func.Module.ImportReference(() => RemoteCallHelper.RegisterServerRpcDelegate(default, default, default, default));
-
-            var taskReturnType = func.ReturnType as GenericInstanceType;
-
-            TypeReference returnType = taskReturnType.GenericArguments[0];
-
-            var genericRegisterMethod = func.Module.ImportReference(() => RemoteCallHelper.RegisterRequestDelegate<object>(default, default, default, default)) as GenericInstanceMethod;
-
-            var registerInstance = new GenericInstanceMethod(genericRegisterMethod.ElementMethod);
-            registerInstance.GenericArguments.Add(returnType);
-            return registerInstance;
-        }
-
-        public void ProcessRpc(MethodDefinition md, CustomAttribute serverRpcAttr)
-        {
-            if (!ValidateRemoteCallAndParameters(md, RemoteCallType.ServerRpc))
-                return;
-
-            if (!Validate(md))
-                return;
-
-            bool requireAuthority = serverRpcAttr.GetField("requireAuthority", false);
+            // default vaue true for requireAuthority, or someone could force call these on server
+            bool requireAuthority = serverRpcAttr.GetField(nameof(ServerRpcAttribute.requireAuthority), true);
 
             ValueSerializer[] paramSerializers = GetValueSerializers(md);
 
-            MethodDefinition userCodeFunc = GenerateStub(md, serverRpcAttr, paramSerializers);
+            MethodDefinition userCodeFunc = GenerateStub(md, serverRpcAttr, rpcIndex, paramSerializers);
 
             MethodDefinition skeletonFunc = GenerateSkeleton(md, userCodeFunc, paramSerializers);
-            serverRpcs.Add(new ServerRpcMethod
+            return new ServerRpcMethod
             {
+                Index = rpcIndex,
                 stub = md,
                 requireAuthority = requireAuthority,
                 skeleton = skeletonFunc
-            });
+            };
         }
 
         protected void InvokeBody(ILProcessor worker, MethodDefinition rpc)
@@ -289,23 +219,18 @@ namespace Mirage.Weaver
                 // if param is network player, use Server's Local player instead
                 //   in host mode this will be the Server's copy of the the player,
                 //   in server mode this will be null
-                if (IsNetworkPlayer(param))
+                if (IsNetworkPlayer(param.ParameterType))
                 {
                     worker.Append(worker.Create(OpCodes.Ldarg_0));
                     worker.Append(worker.Create(OpCodes.Call, (NetworkBehaviour nb) => nb.Server));
-                    worker.Append(worker.Create(OpCodes.Call, (NetworkServer server) => server.LocalPlayer));
+                    worker.Append(worker.Create(OpCodes.Callvirt, (INetworkServer server) => server.LocalPlayer));
                 }
                 else
                 {
                     worker.Append(worker.Create(OpCodes.Ldarg, param));
                 }
             }
-            worker.Append(worker.Create(OpCodes.Call, rpc));
-
-            bool IsNetworkPlayer(ParameterDefinition param)
-            {
-                return param.ParameterType.Resolve().ImplementsInterface<INetworkPlayer>();
-            }
+            worker.Append(worker.Create(OpCodes.Callvirt, rpc.MakeHostInstanceSelfGeneric()));
         }
     }
 }

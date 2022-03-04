@@ -36,9 +36,6 @@ namespace Mirage.Weaver
             // the mapping of dirtybits to sync-vars is implicit in the order of the fields here. this order is recorded in m_replacementProperties.
             // start assigning syncvars at the place the base class stopped, if any
 
-            // get numbers of syncvars in parent class, it will be added to syncvars in this class for total
-            behaviour.GetSyncVarCountFromBase();
-
             // find syncvars
             // use ToArray to create copy, ProcessSyncVar might add new fields
             foreach (FieldDefinition fd in td.Fields.ToArray())
@@ -80,11 +77,6 @@ namespace Mirage.Weaver
             if (!field.HasCustomAttribute<SyncVarAttribute>())
             {
                 return false;
-            }
-
-            if (field.FieldType.IsGenericParameter)
-            {
-                throw new SyncVarException($"{field.Name} cannot be synced since it's a generic parameter", field);
             }
 
             if ((field.Attributes & FieldAttributes.Static) != 0)
@@ -425,25 +417,38 @@ namespace Mirage.Weaver
 
         void WriteCallHookEvent(ILProcessor worker, EventDefinition @event, VariableDefinition oldValue, FoundSyncVar syncVarField)
         {
-            FieldReference eventField = @event.DeclaringType.GetField(@event.Name);
-            Instruction nop = worker.Create(OpCodes.Nop);
-            worker.Append(worker.Create(OpCodes.Ldarg_0));
-            worker.Append(worker.Create(OpCodes.Ldfld, eventField));
-            // jump to nop if null
-            worker.Append(worker.Create(OpCodes.Brfalse_S, nop));
+            // get backing field for event, and sure it is generic instance (eg MyType<T>.myEvent
+            FieldReference eventField = @event.DeclaringType.GetField(@event.Name).MakeHostGenericIfNeeded();
 
+            // get Invoke method and make it correct type
+            MethodReference invokeNonGeneric = @event.Module.ImportReference(typeof(Action<,>).GetMethod("Invoke"));
+            MethodReference invoke = invokeNonGeneric.MakeHostInstanceGeneric((GenericInstanceType)@event.EventType);
+
+            Instruction nopEvent = worker.Create(OpCodes.Nop);
+            Instruction nopEnd = worker.Create(OpCodes.Nop);
+
+            // **null check**
             worker.Append(worker.Create(OpCodes.Ldarg_0));
             worker.Append(worker.Create(OpCodes.Ldfld, eventField));
+            // dup so we dont need to load field twice
+            worker.Append(worker.Create(OpCodes.Dup));
+
+            // jump to nop if null
+            worker.Append(worker.Create(OpCodes.Brtrue, nopEvent));
+            // pop because we didn't use field on if it was null
+            worker.Append(worker.Create(OpCodes.Pop));
+            worker.Append(worker.Create(OpCodes.Br, nopEnd));
+
+            // **call invoke**
+            worker.Append(nopEvent);
+
             WriteOldValue();
             WriteNewValue();
 
-            MethodReference invokeNonGeneric = @event.Module.ImportReference(typeof(Action<,>).GetMethod("Invoke"));
-            MethodReference invoke = invokeNonGeneric.MakeHostInstanceGeneric((GenericInstanceType)@event.EventType);
             worker.Append(worker.Create(OpCodes.Call, invoke));
 
             // after if (event!=null)
-            worker.Append(nop);
-
+            worker.Append(nopEnd);
 
 
             // *** Local functions used to write OpCodes ***
@@ -522,7 +527,8 @@ namespace Mirage.Weaver
         {
             if (!syncVar.HasProcessed) return;
 
-            syncVar.ValueSerializer.AppendWriteField(module, worker, writerParameter, null, syncVar.FieldDefinition);
+            FieldReference fieldRef = syncVar.FieldDefinition.MakeHostGenericIfNeeded();
+            syncVar.ValueSerializer.AppendWriteField(module, worker, writerParameter, null, fieldRef);
         }
 
 

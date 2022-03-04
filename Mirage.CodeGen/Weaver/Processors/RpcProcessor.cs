@@ -1,7 +1,6 @@
+using System;
 using System.Linq;
-using System.Reflection;
 using Cysharp.Threading.Tasks;
-using Mirage.RemoteCalls;
 using Mirage.Weaver.Serialization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -10,15 +9,11 @@ namespace Mirage.Weaver
 {
     public abstract class RpcProcessor
     {
-        public const string SkeletonPrefix = "Skeleton_";
-        public const string UserCodePrefix = "UserCode_";
-
         protected readonly ModuleDefinition module;
         protected readonly Readers readers;
         protected readonly Writers writers;
         protected readonly IWeaverLogger logger;
 
-        public static string InvokeRpcPrefix => "InvokeUserCode_";
 
         protected RpcProcessor(ModuleDefinition module, Readers readers, Writers writers, IWeaverLogger logger)
         {
@@ -27,6 +22,11 @@ namespace Mirage.Weaver
             this.writers = writers;
             this.logger = logger;
         }
+
+        /// <summary>
+        /// Type of attribute for this rpc, eg [ServerRPC] or [ClientRPC}
+        /// </summary>
+        protected abstract Type AttributeType { get; }
 
         // helper functions to check if the method has a NetworkPlayer parameter
         protected static bool HasNetworkPlayerParameter(MethodDefinition md)
@@ -38,6 +38,36 @@ namespace Mirage.Weaver
         protected static bool IsNetworkPlayer(TypeReference type)
         {
             return type.Resolve().ImplementsInterface<INetworkPlayer>();
+        }
+
+        /// <summary>
+        /// Hash to name names unique
+        /// </summary>
+        static int GetStableHash(MethodReference method)
+        {
+            return method.FullName.GetStableHashCode();
+        }
+
+        /// <summary>
+        /// Gets the UserCode_ name for a method
+        /// </summary>
+        /// <param name="method"></param>
+        /// <returns></returns>
+        protected static string UserCodeMethodName(MethodDefinition method)
+        {
+            // append fullName hash to end to support overloads, but keep "md.Name" so it is human readable when debugging
+            return $"UserCode_{method.Name}_{GetStableHash(method)}";
+        }
+
+        /// <summary>
+        /// Gets the Skeleton_ name for a method
+        /// </summary>
+        /// <param name="method"></param>
+        /// <returns></returns>
+        protected static string SkeletonMethodName(MethodDefinition method)
+        {
+            // append fullName hash to end to support overloads, but keep "md.Name" so it is human readable when debugging
+            return $"Skeleton_{method.Name}_{GetStableHash(method)}";
         }
 
         /// <summary>
@@ -71,6 +101,7 @@ namespace Mirage.Weaver
                 }
             }
 
+            // check and log all bad params before throwing RPC
             if (error)
             {
                 throw new RpcException($"Could not process Rpc because one or more of its parameter were invalid", method);
@@ -152,125 +183,104 @@ namespace Mirage.Weaver
             serializer.AppendRead(module, worker, readerParameter, param.ParameterType);
         }
 
-        // check if a Command/TargetRpc/Rpc function & parameters are valid for weaving
-        public bool ValidateRemoteCallAndParameters(MethodDefinition method, RemoteCallType callType)
+        /// <summary>
+        /// check if a method is valid for rpc
+        /// </summary>
+        /// <exception cref="RpcException">Throws when method is invalid</exception>
+        protected void ValidateMethod(MethodDefinition method, RemoteCallType callType)
         {
             if (method.IsAbstract)
             {
-                logger.Error("Abstract Rpcs are currently not supported, use virtual method instead", method);
-                return false;
+                throw new RpcException("Abstract Rpcs are currently not supported, use virtual method instead", method);
             }
 
             if (method.IsStatic)
             {
-                logger.Error($"{method.Name} must not be static", method);
-                return false;
+                throw new RpcException($"{method.Name} must not be static", method);
             }
 
             if (method.ReturnType.Is<System.Collections.IEnumerator>())
             {
-                logger.Error($"{method.Name} cannot be a coroutine", method);
-                return false;
+                throw new RpcException($"{method.Name} cannot be a coroutine", method);
             }
 
             if (method.HasGenericParameters)
             {
-                logger.Error($"{method.Name} cannot have generic parameters", method);
-                return false;
+                throw new RpcException($"{method.Name} cannot have generic parameters", method);
             }
-
-            return ValidateParameters(method, callType);
         }
 
-        // check if all Command/TargetRpc/Rpc function's parameters are valid for weaving
-        bool ValidateParameters(MethodReference method, RemoteCallType callType)
+        /// <summary>
+        /// checks if method parameters are valid for rpc
+        /// </summary>
+        /// <exception cref="RpcException">Throws when parameter are invalid</exception>
+        protected void ValidateParameters(MethodReference method, RemoteCallType callType)
         {
-            for (int i = 0; i < method.Parameters.Count; ++i)
+            for (int i = 0; i < method.Parameters.Count; i++)
             {
                 ParameterDefinition param = method.Parameters[i];
-                if (!ValidateParameter(method, param, callType, i == 0))
-                {
-                    return false;
-                }
+                ValidateParameter(method, param, callType, i == 0);
             }
-            return true;
         }
 
-        // validate parameters for a remote function call like Rpc/Cmd
-        bool ValidateParameter(MethodReference method, ParameterDefinition param, RemoteCallType callType, bool firstParam)
+        /// <summary>
+        /// checks if return type if valid for rpc
+        /// </summary>
+        /// <exception cref="RpcException">Throws when parameter are invalid</exception>
+        protected void ValidateReturnType(MethodDefinition md, RemoteCallType callType)
+        {
+            TypeReference returnType = md.ReturnType;
+            if (returnType.Is(typeof(void)))
+                return;
+
+            // only ServerRpc allow UniTask
+            if (callType == RemoteCallType.ServerRpc)
+            {
+                Type unitaskType = typeof(UniTask<int>).GetGenericTypeDefinition();
+                if (returnType.Is(unitaskType))
+                    return;
+            }
+
+
+            if (callType == RemoteCallType.ServerRpc)
+                throw new RpcException($"Use UniTask<{md.ReturnType}> to return values from [ServerRpc]", md);
+            else
+                throw new RpcException($"[ClientRpc] must return void", md);
+        }
+
+        /// <summary>
+        /// checks if a parameter is valid for rpc
+        /// </summary>
+        /// <exception cref="RpcException">Throws when parameter are invalid</exception>
+        void ValidateParameter(MethodReference method, ParameterDefinition param, RemoteCallType callType, bool firstParam)
         {
             if (param.IsOut)
             {
-                logger.Error($"{method.Name} cannot have out parameters", method);
-                return false;
-            }
-
-            if (param.ParameterType.IsGenericParameter)
-            {
-                logger.Error($"{method.Name} cannot have generic parameters", method);
-                return false;
+                throw new RpcException($"{method.Name} cannot have out parameters", method);
             }
 
             if (IsNetworkPlayer(param.ParameterType))
             {
                 if (callType == RemoteCallType.ClientRpc && firstParam)
                 {
-                    // perfectly fine,  target rpc can receive a network connection as first parameter
-                    return true;
+                    return;
                 }
 
                 if (callType == RemoteCallType.ServerRpc)
                 {
-                    return true;
+                    return;
                 }
 
-                logger.Error($"{method.Name} has invalid parameter {param}, Cannot pass NetworkConnections", method);
-                return false;
+                throw new RpcException($"{method.Name} has invalid parameter {param}, Cannot pass NetworkConnections", method);
             }
 
+            // check networkplayer before optional, because networkplayer can be optional
             if (param.IsOptional)
             {
-                logger.Error($"{method.Name} cannot have optional parameters", method);
-                return false;
+                throw new RpcException($"{method.Name} cannot have optional parameters", method);
             }
-
-            return true;
         }
 
-        public void CreateRpcDelegate(ILProcessor worker, MethodDefinition func)
-        {
-            MethodReference CmdDelegateConstructor;
-
-            if (func.ReturnType.Is(typeof(void)))
-            {
-                ConstructorInfo[] constructors = typeof(CmdDelegate).GetConstructors();
-                CmdDelegateConstructor = func.Module.ImportReference(constructors.First());
-            }
-            else if (func.ReturnType.Is(typeof(UniTask<int>).GetGenericTypeDefinition()))
-            {
-                var taskReturnType = func.ReturnType as GenericInstanceType;
-
-                TypeReference returnType = taskReturnType.GenericArguments[0];
-                TypeReference genericDelegate = func.Module.ImportReference(typeof(RequestDelegate<int>).GetGenericTypeDefinition());
-
-                var delegateInstance = new GenericInstanceType(genericDelegate);
-                delegateInstance.GenericArguments.Add(returnType);
-
-                ConstructorInfo constructor = typeof(RequestDelegate<int>).GetConstructors().First();
-
-                MethodReference constructorRef = func.Module.ImportReference(constructor);
-
-                CmdDelegateConstructor = constructorRef.MakeHostInstanceGeneric(delegateInstance);
-            }
-            else
-            {
-                logger.Error("Use UniTask<x> to return a value from ServerRpc in" + func);
-                return;
-            }
-
-            worker.Append(worker.Create(OpCodes.Ldftn, func));
-            worker.Append(worker.Create(OpCodes.Newobj, CmdDelegateConstructor));
-        }
 
         // creates a method substitute
         // For example, if we have this:
@@ -295,79 +305,77 @@ namespace Mirage.Weaver
         //
         //  the original method definition loses all code
         //  this returns the newly created method with all the user provided code
-        public MethodDefinition SubstituteMethod(MethodDefinition md)
+        public MethodDefinition SubstituteMethod(MethodDefinition method)
         {
-            string newName = UserCodePrefix + md.Name;
-            MethodDefinition cmd = md.DeclaringType.AddMethod(newName, md.Attributes, md.ReturnType);
+            string newName = UserCodeMethodName(method);
+            MethodDefinition generatedMethod = method.DeclaringType.AddMethod(newName, method.Attributes, method.ReturnType);
 
             // add parameters
-            foreach (ParameterDefinition pd in md.Parameters)
+            foreach (ParameterDefinition pd in method.Parameters)
             {
-                _ = cmd.AddParam(pd.ParameterType, pd.Name);
+                _ = generatedMethod.AddParam(pd.ParameterType, pd.Name);
             }
 
             // swap bodies
-            (cmd.Body, md.Body) = (md.Body, cmd.Body);
+            (generatedMethod.Body, method.Body) = (method.Body, generatedMethod.Body);
 
             // Move over all the debugging information
-            foreach (SequencePoint sequencePoint in md.DebugInformation.SequencePoints)
-                cmd.DebugInformation.SequencePoints.Add(sequencePoint);
-            md.DebugInformation.SequencePoints.Clear();
+            foreach (SequencePoint sequencePoint in method.DebugInformation.SequencePoints)
+                generatedMethod.DebugInformation.SequencePoints.Add(sequencePoint);
+            method.DebugInformation.SequencePoints.Clear();
 
-            foreach (CustomDebugInformation customInfo in md.CustomDebugInformations)
-                cmd.CustomDebugInformations.Add(customInfo);
-            md.CustomDebugInformations.Clear();
+            foreach (CustomDebugInformation customInfo in method.CustomDebugInformations)
+                generatedMethod.CustomDebugInformations.Add(customInfo);
+            method.CustomDebugInformations.Clear();
 
-            (md.DebugInformation.Scope, cmd.DebugInformation.Scope) = (cmd.DebugInformation.Scope, md.DebugInformation.Scope);
+            (method.DebugInformation.Scope, generatedMethod.DebugInformation.Scope) = (generatedMethod.DebugInformation.Scope, method.DebugInformation.Scope);
 
-            FixRemoteCallToBaseMethod(md.DeclaringType, cmd);
-            return cmd;
+            FixRemoteCallToBaseMethod(method.DeclaringType, method, generatedMethod);
+            return generatedMethod;
         }
-
 
         /// <summary>
         /// Finds and fixes call to base methods within remote calls
         /// <para>For example, changes `base.CmdDoSomething` to `base.UserCode_CmdDoSomething` within `this.UserCode_CmdDoSomething`</para>
         /// </summary>
         /// <param name="type"></param>
-        /// <param name="method"></param>
-        public void FixRemoteCallToBaseMethod(TypeDefinition type, MethodDefinition method)
+        /// <param name="generatedMethod"></param>
+        void FixRemoteCallToBaseMethod(TypeDefinition type, MethodDefinition method, MethodDefinition generatedMethod)
         {
-            string callName = method.Name;
+            string userCodeName = generatedMethod.Name;
+            string rpcName = method.Name;
 
-            // all ServerRpcs/Rpc start with "UserCode_"
-            // eg CallCmdDoSomething
-            if (!callName.StartsWith(UserCodePrefix))
-                return;
-
-            // eg CmdDoSomething
-            string baseRemoteCallName = method.Name.Substring(UserCodePrefix.Length);
-
-            foreach (Instruction instruction in method.Body.Instructions)
+            foreach (Instruction instruction in generatedMethod.Body.Instructions)
             {
-                // if call to base.CmdDoSomething within this.CallCmdDoSomething
-                if (IsCallToMethod(instruction, out MethodDefinition calledMethod) &&
-                    calledMethod.Name == baseRemoteCallName)
+                if (!IsCallToMethod(instruction, out MethodDefinition calledMethod))
+                    continue;
+
+                // does method have same name? (NOTE: could be overload or non RPC at this point)
+                if (calledMethod.Name != rpcName)
+                    continue;
+
+                // method (base or overload) is not an rpc, dont try to change it
+                if (!calledMethod.HasCustomAttribute(AttributeType))
+                    continue;
+
+                string targetName = UserCodeMethodName(calledMethod);
+                // check this type and base types for methods
+                // if the calledMethod is an rpc, then it will have a UserCode_ method generated for it
+                MethodReference userCodeReplacement = type.GetMethodInBaseType(targetName);
+
+                if (userCodeReplacement == null)
                 {
-                    TypeDefinition baseType = type.BaseType.Resolve();
-                    MethodReference baseMethod = baseType.GetMethodInBaseType(callName);
-
-                    if (baseMethod == null)
-                    {
-                        logger.Error($"Could not find base method for {callName}", method);
-                        return;
-                    }
-
-                    if (!baseMethod.Resolve().IsVirtual)
-                    {
-                        logger.Error($"Could not find base method that was virtual {callName}", method);
-                        return;
-                    }
-
-                    instruction.Operand = method.Module.ImportReference(baseMethod);
-
-                    Weaver.DebugLog(type, $"Replacing call to '{calledMethod.FullName}' with '{baseMethod.FullName}' inside '{ method.FullName}'");
+                    throw new RpcException($"Could not find base method for {userCodeName}", generatedMethod);
                 }
+
+                if (!userCodeReplacement.Resolve().IsVirtual)
+                {
+                    throw new RpcException($"Could not find base method that was virtual {userCodeName}", generatedMethod);
+                }
+
+                instruction.Operand = generatedMethod.Module.ImportReference(userCodeReplacement);
+
+                Weaver.DebugLog(type, $"Replacing call to '{calledMethod.FullName}' with '{userCodeReplacement.FullName}' inside '{ generatedMethod.FullName}'");
             }
         }
 
