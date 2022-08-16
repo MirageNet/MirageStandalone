@@ -13,3 +13,16 @@ Add this to the `.csproj` for a project.
 ```
 
 It will cause weaver to run when that project is compiled and stop if weaver has any errors
+
+
+## How to update this repo
+
+Run copy script
+```sh
+CopyFromMirage.sh "<path to mirage repo>"
+```
+
+This script will delete all old scripts and copy new scripts into the correct folders in this repo. 
+The files should then be double checked before committing and pushing.
+
+
