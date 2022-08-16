@@ -37,7 +37,7 @@ namespace Mirage.Logging
 
         private static ILogger CreateNewLogger(string loggerName, LogType defaultLogLevel)
         {
-            var logger = new Logger(defaultLogHandler)
+            var logger = new StandaloneLogger()
             {
                 // by default, log warnings and up
                 filterLogType = defaultLogLevel

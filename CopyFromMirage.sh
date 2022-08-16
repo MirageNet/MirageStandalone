@@ -15,10 +15,12 @@ CopyScripts "$MiragePath/Assets/Mirage/Runtime/RemoteCalls" "./Mirage/Runtime/Re
 CopyScripts "$MiragePath/Assets/Mirage/Runtime/Serialization" "./Mirage/Runtime/Serialization"
 
 CopyScripts "$MiragePath/Assets/Mirage/Weaver" "./Mirage.CodeGen/Weaver"
+rm "./Mirage.CodeGen/Weaver/MirageILPostProcessor.cs"
 CopyScripts "$MiragePath/Assets/Mirage/Weaver/Processors" "./Mirage.CodeGen/Weaver/Processors"
 CopyScripts "$MiragePath/Assets/Mirage/Weaver/Serialization" "./Mirage.CodeGen/Weaver/Serialization"
 
 cp "$MiragePath/Assets/Mirage/Runtime/Logging/LogFactory.cs" "./Mirage.Logging/Logging/"
+sed -i 's/new Logger(defaultLogHandler)/new StandaloneLogger()/g' ./Mirage.Logging/Logging/LogFactory.cs
 
 CopyScripts "$MiragePath/Assets/Mirage/Runtime/SocketLayer" "./Mirage.SocketLayer/SocketLayer"
 CopyScripts "$MiragePath/Assets/Mirage/Runtime/SocketLayer/Enums" "./Mirage.SocketLayer/SocketLayer/Enums"
