@@ -11,4 +11,5 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Mirage.Tests.Performance.Editor")]
 [assembly: InternalsVisibleTo("Mirage.Tests.Performance.Runtime")]
 [assembly: InternalsVisibleTo("Mirage.Editor")]
-[assembly: InternalsVisibleTo("Unity.Mirage.CodeGen")]
+[assembly: InternalsVisibleTo("Mirage.CodeGen")]
+[assembly: InternalsVisibleTo("Mirage.Standalone")]

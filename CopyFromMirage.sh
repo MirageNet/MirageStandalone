@@ -9,6 +9,10 @@ CopyScripts () {
 }
 
 CopyScripts "$MiragePath/Assets/Mirage/Runtime" "./Mirage/Runtime"
+
+sed -i 's/"Unity\.Mirage\.CodeGen"/"Mirage.CodeGen"/g' ./Mirage/Runtime/AssemblyInfo.cs
+echo "[assembly: InternalsVisibleTo(\"Mirage.Standalone\")]" >> ./Mirage/Runtime/AssemblyInfo.cs
+
 CopyScripts "$MiragePath/Assets/Mirage/Runtime/Collections" "./Mirage/Runtime/Collections"
 CopyScripts "$MiragePath/Assets/Mirage/Runtime/Events" "./Mirage/Runtime/Events"
 CopyScripts "$MiragePath/Assets/Mirage/Runtime/RemoteCalls" "./Mirage/Runtime/RemoteCalls"
