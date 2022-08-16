@@ -14,9 +14,9 @@ namespace Mirage
         {
             unchecked
             {
-                int hash = EmptyString;
-                foreach (char c in text)
-                    hash = hash * 31 + c;
+                var hash = EmptyString;
+                foreach (var c in text)
+                    hash = (hash * 31) + c;
                 return hash;
             }
         }

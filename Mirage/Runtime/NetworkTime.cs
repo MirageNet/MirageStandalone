@@ -10,7 +10,7 @@ namespace Mirage
     /// </summary>
     public class NetworkTime
     {
-        static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkTime));
+        private static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkTime));
 
         /// <summary>
         /// how often are we sending ping messages
@@ -22,47 +22,46 @@ namespace Mirage
         /// average out the last few results from Ping
         /// </summary>
         public int PingWindowSize = 10;
-
-        double lastPingTime;
+        private double _lastPingTime;
 
         // Date and time when the application started
-        private readonly Stopwatch stopwatch = new Stopwatch();
+        private readonly Stopwatch _stopwatch = new Stopwatch();
 
         public NetworkTime()
         {
-            stopwatch.Start();
+            _stopwatch.Start();
         }
 
-        ExponentialMovingAverage _rtt = new ExponentialMovingAverage(10);
-        ExponentialMovingAverage _offset = new ExponentialMovingAverage(10);
+        private ExponentialMovingAverage _rtt = new ExponentialMovingAverage(10);
+        private ExponentialMovingAverage _offset = new ExponentialMovingAverage(10);
         private double _time;
-        private int lastFrame;
+        private int _lastFrame;
 
         // the true offset guaranteed to be in this range
-        double offsetMin = double.MinValue;
-        double offsetMax = double.MaxValue;
+        private double _offsetMin = double.MinValue;
+        private double _offsetMax = double.MaxValue;
 
         // returns the clock time _in this system_
-        double LocalTime() => stopwatch.Elapsed.TotalSeconds;
+        private double LocalTime() => _stopwatch.Elapsed.TotalSeconds;
 
         public void Reset()
         {
             _rtt = new ExponentialMovingAverage(PingWindowSize);
             _offset = new ExponentialMovingAverage(PingWindowSize);
-            offsetMin = double.MinValue;
-            offsetMax = double.MaxValue;
+            _offsetMin = double.MinValue;
+            _offsetMax = double.MaxValue;
         }
 
         internal void UpdateClient(INetworkClient client)
         {
-            if (UnityEngine.Time.time - lastPingTime >= PingInterval)
+            if (UnityEngine.Time.time - _lastPingTime >= PingInterval)
             {
                 var pingMessage = new NetworkPingMessage
                 {
                     clientTime = LocalTime()
                 };
                 client.Send(pingMessage, Channel.Unreliable);
-                lastPingTime = UnityEngine.Time.time;
+                _lastPingTime = UnityEngine.Time.time;
             }
         }
 
@@ -87,29 +86,29 @@ namespace Mirage
         // and update time offset
         internal void OnClientPong(NetworkPongMessage msg)
         {
-            double now = LocalTime();
+            var now = LocalTime();
 
             // how long did this message take to come back
-            double newRtt = now - msg.clientTime;
+            var newRtt = now - msg.clientTime;
             _rtt.Add(newRtt);
 
             // the difference in time between the client and the server
             // but subtract half of the rtt to compensate for latency
             // half of rtt is the best approximation we have
-            double newOffset = now - newRtt * 0.5f - msg.serverTime;
+            var newOffset = now - (newRtt * 0.5f) - msg.serverTime;
 
-            double newOffsetMin = now - newRtt - msg.serverTime;
-            double newOffsetMax = now - msg.serverTime;
-            offsetMin = Math.Max(offsetMin, newOffsetMin);
-            offsetMax = Math.Min(offsetMax, newOffsetMax);
+            var newOffsetMin = now - newRtt - msg.serverTime;
+            var newOffsetMax = now - msg.serverTime;
+            _offsetMin = Math.Max(_offsetMin, newOffsetMin);
+            _offsetMax = Math.Min(_offsetMax, newOffsetMax);
 
-            if (_offset.Value < offsetMin || _offset.Value > offsetMax)
+            if (_offset.Value < _offsetMin || _offset.Value > _offsetMax)
             {
                 // the old offset was offrange,  throw it away and use new one
                 _offset = new ExponentialMovingAverage(PingWindowSize);
                 _offset.Add(newOffset);
             }
-            else if (newOffset >= offsetMin || newOffset <= offsetMax)
+            else if (newOffset >= _offsetMin || newOffset <= _offsetMax)
             {
                 // new offset looks reasonable,  add to the average
                 _offset.Add(newOffset);
@@ -153,11 +152,11 @@ namespace Mirage
                 // so cache the time for the duration of the frame
                 // if someone asks for .time several times in a frame this has significant impact
                 // this also makes it more consistent with Time.time
-                if (lastFrame != UnityEngine.Time.frameCount)
+                if (_lastFrame != UnityEngine.Time.frameCount)
                 {
                     // Notice _offset is 0 at the server
                     _time = LocalTime() - _offset.Value;
-                    lastFrame = UnityEngine.Time.frameCount;
+                    _lastFrame = UnityEngine.Time.frameCount;
                 }
                 return _time;
 

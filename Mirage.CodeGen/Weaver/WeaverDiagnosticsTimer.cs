@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using ConditionalAttribute = System.Diagnostics.ConditionalAttribute;
 using Stopwatch = System.Diagnostics.Stopwatch;
@@ -8,8 +8,8 @@ namespace Mirage.Weaver
     internal class WeaverDiagnosticsTimer
     {
         public bool writeToFile;
-        StreamWriter writer;
-        Stopwatch stopwatch;
+        private StreamWriter writer;
+        private Stopwatch stopwatch;
         private string name;
 
         public long ElapsedMilliseconds => stopwatch?.ElapsedMilliseconds ?? 0;
@@ -20,6 +20,18 @@ namespace Mirage.Weaver
             writer = null;
         }
 
+        static bool _checkDirectory = false;
+        static void CheckDirectory()
+        {
+            if (_checkDirectory)
+                return;
+            _checkDirectory = true;
+            if (!Directory.Exists("./Logs/WeaverLogs"))
+            {
+                Directory.CreateDirectory("./Logs/WeaverLogs");
+            }
+        }
+
         [Conditional("WEAVER_DEBUG_TIMER")]
         public void Start(string name)
         {
@@ -27,7 +39,8 @@ namespace Mirage.Weaver
 
             if (writeToFile)
             {
-                string path = $"./Build/WeaverLogs/Timer_{name}.log";
+                CheckDirectory();
+                var path = $"./Logs/WeaverLogs/Timer_{name}.log";
                 try
                 {
                     writer = new StreamWriter(path)
@@ -54,9 +67,9 @@ namespace Mirage.Weaver
         }
 
         [Conditional("WEAVER_DEBUG_TIMER")]
-        void WriteLine(string msg)
+        private void WriteLine(string msg)
         {
-            string fullMsg = $"[WeaverDiagnostics] {msg}";
+            var fullMsg = $"[WeaverDiagnostics] {msg}";
             Console.WriteLine(fullMsg);
             if (writeToFile)
             {
@@ -79,9 +92,9 @@ namespace Mirage.Weaver
 
         public struct SampleScope : IDisposable
         {
-            readonly WeaverDiagnosticsTimer timer;
-            readonly long start;
-            readonly string label;
+            private readonly WeaverDiagnosticsTimer timer;
+            private readonly long start;
+            private readonly string label;
 
             public SampleScope(WeaverDiagnosticsTimer timer, string label)
             {

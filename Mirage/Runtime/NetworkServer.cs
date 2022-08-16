@@ -20,7 +20,7 @@ namespace Mirage
     [DisallowMultipleComponent]
     public class NetworkServer : MonoBehaviour, INetworkServer
     {
-        static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkServer));
+        private static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkServer));
 
         public bool EnablePeerMetrics;
         [Tooltip("Sequence size of buffer in bits.\n10 => array size 1024 => ~17 seconds at 60hz")]
@@ -36,11 +36,14 @@ namespace Mirage
         /// The maximum number of concurrent network connections to support. Excluding the host player.
         /// <para>This field is only used if the <see cref="PeerConfig"/> property is null</para>
         /// </summary>
-        [Tooltip("Maximum number of concurrent connections. Excluding the host player.")]
+        [Tooltip("Maximum number of concurrent connections. Excluding the host player.\nNOTE: this field is not used if PeerConfig is set via code.")]
         [Min(1)]
         public int MaxConnections = 4;
 
         public bool DisconnectOnException = true;
+
+        [Tooltip("If true will set Application.runInBackground")]
+        public bool RunInBackground = true;
 
         [Tooltip("If disabled the server will not create a Network Peer to listen. This can be used to run server single player mode")]
         public bool Listening = true;
@@ -48,13 +51,13 @@ namespace Mirage
         [Tooltip("Creates Socket for Peer to use")]
         public SocketFactory SocketFactory;
 
-        Peer peer;
+        private Peer _peer;
 
         [Tooltip("Authentication component attached to this object")]
         public NetworkAuthenticator authenticator;
 
         [Header("Events")]
-        [SerializeField] AddLateEvent _started = new AddLateEvent();
+        [SerializeField] private AddLateEvent _started = new AddLateEvent();
         /// <summary>
         /// This is invoked when a server is started - including when a host is started.
         /// </summary>
@@ -64,37 +67,37 @@ namespace Mirage
         /// Event fires once a new Client has connect to the Server.
         /// </summary>
         [FormerlySerializedAs("Connected")]
-        [FoldoutEvent, SerializeField] NetworkPlayerEvent _connected = new NetworkPlayerEvent();
+        [FoldoutEvent, SerializeField] private NetworkPlayerEvent _connected = new NetworkPlayerEvent();
         public NetworkPlayerEvent Connected => _connected;
 
         /// <summary>
         /// Event fires once a new Client has passed Authentication to the Server.
         /// </summary>
         [FormerlySerializedAs("Authenticated")]
-        [FoldoutEvent, SerializeField] NetworkPlayerEvent _authenticated = new NetworkPlayerEvent();
+        [FoldoutEvent, SerializeField] private NetworkPlayerEvent _authenticated = new NetworkPlayerEvent();
         public NetworkPlayerEvent Authenticated => _authenticated;
 
         /// <summary>
         /// Event fires once a Client has Disconnected from the Server.
         /// </summary>
         [FormerlySerializedAs("Disconnected")]
-        [FoldoutEvent, SerializeField] NetworkPlayerEvent _disconnected = new NetworkPlayerEvent();
+        [FoldoutEvent, SerializeField] private NetworkPlayerEvent _disconnected = new NetworkPlayerEvent();
         public NetworkPlayerEvent Disconnected => _disconnected;
 
-        [SerializeField] AddLateEvent _stopped = new AddLateEvent();
+        [SerializeField] private AddLateEvent _stopped = new AddLateEvent();
         public IAddLateEvent Stopped => _stopped;
 
         /// <summary>
         /// This is invoked when a host is started.
         /// <para>StartHost has multiple signatures, but they all cause this hook to be called.</para>
         /// </summary>
-        [SerializeField] AddLateEvent _onStartHost = new AddLateEvent();
+        [SerializeField] private AddLateEvent _onStartHost = new AddLateEvent();
         public IAddLateEvent OnStartHost => _onStartHost;
 
         /// <summary>
         /// This is called when a host is stopped.
         /// </summary>
-        [SerializeField] AddLateEvent _onStopHost = new AddLateEvent();
+        [SerializeField] private AddLateEvent _onStopHost = new AddLateEvent();
         public IAddLateEvent OnStopHost => _onStopHost;
 
         /// <summary>
@@ -119,14 +122,15 @@ namespace Mirage
         /// Number of active player objects across all connections on the server.
         /// <para>This is only valid on the host / server.</para>
         /// </summary>
+        // todo rename this from players to characters. (or remove it? it seems like a confusing field)
         public int NumberOfPlayers => Players.Count(kv => kv.HasCharacter);
 
         /// <summary>
         /// A list of local connections on the server.
         /// </summary>
-        public IReadOnlyCollection<INetworkPlayer> Players => connections.Values;
+        public IReadOnlyCollection<INetworkPlayer> Players => _connections.Values;
 
-        readonly Dictionary<IConnection, INetworkPlayer> connections = new Dictionary<IConnection, INetworkPlayer>();
+        private readonly Dictionary<IConnection, INetworkPlayer> _connections = new Dictionary<IConnection, INetworkPlayer>();
 
         /// <summary>
         /// <para>Checks if the server has been started.</para>
@@ -164,7 +168,7 @@ namespace Mirage
             }
 
             // just clear list, connections will be disconnected when peer is closed
-            connections.Clear();
+            _connections.Clear();
             LocalPlayer = null;
 
             Cleanup();
@@ -186,10 +190,10 @@ namespace Mirage
             ThrowIfSocketIsMissing();
 
             Application.quitting += Stop;
-            if (logger.LogEnabled()) logger.Log($"NetworkServer Created, Mirage version: {Version.Current}");
+            if (logger.LogEnabled()) logger.Log($"NetworkServer created, Mirage version: {Version.Current}");
 
             logger.Assert(Players.Count == 0, "Player should have been reset since previous session");
-            logger.Assert(connections.Count == 0, "Connections should have been reset since previous session");
+            logger.Assert(_connections.Count == 0, "Connections should have been reset since previous session");
 
             World = new NetworkWorld();
             SyncVarSender = new SyncVarSender();
@@ -198,11 +202,10 @@ namespace Mirage
             MessageHandler = new MessageHandler(World, DisconnectOnException);
             MessageHandler.RegisterHandler<NetworkPingMessage>(World.Time.OnServerPing);
 
-            ISocket socket = SocketFactory.CreateServerSocket();
-            var dataHandler = new DataHandler(MessageHandler, connections);
+            var dataHandler = new DataHandler(MessageHandler, _connections);
             Metrics = EnablePeerMetrics ? new Metrics(MetricsSize) : null;
 
-            Config config = PeerConfig;
+            var config = PeerConfig;
             if (config == null)
             {
                 config = new Config
@@ -212,19 +215,34 @@ namespace Mirage
                 };
             }
 
-            NetworkWriterPool.Configure(config.MaxPacketSize);
+            var maxPacketSize = SocketFactory.MaxPacketSize;
+            NetworkWriterPool.Configure(maxPacketSize);
 
-            // Only create peer if listening
+            // Are we listening for incoming connections?
+            // If yes, set up a socket for incoming connections (we're a multiplayer game).
+            // If not, that's okay. Some games use a non-listening server for their single player game mode (Battlefield, Call of Duty...)
             if (Listening)
             {
-                peer = new Peer(socket, dataHandler, config, LogFactory.GetLogger<Peer>(), Metrics);
-                peer.OnConnected += Peer_OnConnected;
-                peer.OnDisconnected += Peer_OnDisconnected;
+                // Create a server specific socket.
+                var socket = SocketFactory.CreateServerSocket();
 
-                peer.Bind(SocketFactory.GetBindEndPoint());
+                // Tell the peer to use that newly created socket.
+                _peer = new Peer(socket, maxPacketSize, dataHandler, config, LogFactory.GetLogger<Peer>(), Metrics);
+                _peer.OnConnected += Peer_OnConnected;
+                _peer.OnDisconnected += Peer_OnDisconnected;
+                // Bind it to the endpoint.
+                _peer.Bind(SocketFactory.GetBindEndPoint());
+
+                if (logger.LogEnabled()) logger.Log($"Server started, listening for connections. Using socket {socket.GetType()}");
+
+                if (RunInBackground)
+                    Application.runInBackground = RunInBackground;
             }
-
-            if (logger.LogEnabled()) logger.Log("Server started listening");
+            else
+            {
+                // Nicely mention that we're going live, but not listening for connections.
+                if (logger.LogEnabled()) logger.Log("Server started, but not listening for connections: Attempts to connect to this instance will fail!");
+            }
 
             InitializeAuthEvents();
             Active = true;
@@ -241,12 +259,17 @@ namespace Mirage
             }
         }
 
-        void ThrowIfActive()
+        void INetworkServer.StartServer()
+        {
+            StartServer();
+        }
+
+        private void ThrowIfActive()
         {
             if (Active) throw new InvalidOperationException("Server is already active");
         }
 
-        void ThrowIfSocketIsMissing()
+        private void ThrowIfSocketIsMissing()
         {
             if (SocketFactory is null)
                 SocketFactory = GetComponent<SocketFactory>();
@@ -254,7 +277,7 @@ namespace Mirage
                 throw new InvalidOperationException($"{nameof(SocketFactory)} could not be found for {nameof(NetworkServer)}");
         }
 
-        void InitializeAuthEvents()
+        private void InitializeAuthEvents()
         {
             if (authenticator != null)
             {
@@ -272,9 +295,9 @@ namespace Mirage
 
         internal void Update()
         {
-            peer?.UpdateReceive();
+            _peer?.UpdateReceive();
             SyncVarSender?.Update();
-            peer?.UpdateSent();
+            _peer?.UpdateSent();
         }
 
         private void Peer_OnConnected(IConnection conn)
@@ -294,7 +317,7 @@ namespace Mirage
         {
             if (logger.LogEnabled()) logger.Log($"Client {conn} disconnected with reason: {reason}");
 
-            if (connections.TryGetValue(conn, out INetworkPlayer player))
+            if (_connections.TryGetValue(conn, out var player))
             {
                 OnDisconnected(player);
             }
@@ -334,13 +357,13 @@ namespace Mirage
 
             Application.quitting -= Stop;
 
-            if (peer != null)
+            if (_peer != null)
             {
                 //remove handlers first to stop loop
-                peer.OnConnected -= Peer_OnConnected;
-                peer.OnDisconnected -= Peer_OnDisconnected;
-                peer.Close();
-                peer = null;
+                _peer.OnConnected -= Peer_OnConnected;
+                _peer.OnDisconnected -= Peer_OnDisconnected;
+                _peer.Close();
+                _peer = null;
             }
         }
 
@@ -353,7 +376,7 @@ namespace Mirage
         {
             if (!Players.Contains(player))
             {
-                connections.Add(player.Connection, player);
+                _connections.Add(player.Connection, player);
             }
         }
 
@@ -363,7 +386,7 @@ namespace Mirage
         /// <param name="connectionId">The id of the connection to remove.</param>
         public void RemoveConnection(INetworkPlayer player)
         {
-            connections.Remove(player.Connection);
+            _connections.Remove(player.Connection);
         }
 
         /// <summary>
@@ -409,11 +432,32 @@ namespace Mirage
         public void SendToAll<T>(T msg, int channelId = Channel.Reliable)
         {
             if (logger.LogEnabled()) logger.Log("Server.SendToAll id:" + typeof(T));
-            SendToMany(Players, msg, channelId);
+
+            using (var writer = NetworkWriterPool.GetWriter())
+            {
+                // pack message into byte[] once
+                MessagePacker.Pack(msg, writer);
+                var segment = writer.ToArraySegment();
+                var count = 0;
+
+                // using SendToMany (with IEnumerable) will cause Enumerator to be boxed and create GC/alloc
+                // instead we can use while loop and MoveNext to avoid boxing
+                var enumerator = _connections.Values.GetEnumerator();
+                while (enumerator.MoveNext())
+                {
+                    var player = enumerator.Current;
+                    player.Send(segment, channelId);
+                    count++;
+                }
+                enumerator.Dispose();
+
+                NetworkDiagnostics.OnSend(msg, segment.Count, count);
+            }
         }
 
         /// <summary>
         /// Sends a message to many connections
+        /// <para>WARNING: using this method <b>may</b> cause Enumerator to be boxed creating GC/alloc. Use <see cref="SendToMany{T}(IReadOnlyList{INetworkPlayer}, T, int)"/> version where possible</para>
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="players"></param>
@@ -421,14 +465,14 @@ namespace Mirage
         /// <param name="channelId"></param>
         public static void SendToMany<T>(IEnumerable<INetworkPlayer> players, T msg, int channelId = Channel.Reliable)
         {
-            using (PooledNetworkWriter writer = NetworkWriterPool.GetWriter())
+            using (var writer = NetworkWriterPool.GetWriter())
             {
                 // pack message into byte[] once
                 MessagePacker.Pack(msg, writer);
                 var segment = writer.ToArraySegment();
-                int count = 0;
+                var count = 0;
 
-                foreach (INetworkPlayer player in players)
+                foreach (var player in players)
                 {
                     player.Send(segment, channelId);
                     count++;
@@ -449,14 +493,14 @@ namespace Mirage
         /// </remarks>
         public static void SendToMany<T>(IReadOnlyList<INetworkPlayer> players, T msg, int channelId = Channel.Reliable)
         {
-            using (PooledNetworkWriter writer = NetworkWriterPool.GetWriter())
+            using (var writer = NetworkWriterPool.GetWriter())
             {
                 // pack message into byte[] once
                 MessagePacker.Pack(msg, writer);
                 var segment = writer.ToArraySegment();
-                int count = players.Count;
+                var count = players.Count;
 
-                for (int i = 0; i < count; i++)
+                for (var i = 0; i < count; i++)
                 {
                     players[i].Send(segment, channelId);
                 }
@@ -466,7 +510,7 @@ namespace Mirage
         }
 
         //called once a client disconnects from the server
-        void OnDisconnected(INetworkPlayer player)
+        private void OnDisconnected(INetworkPlayer player)
         {
             if (logger.LogEnabled()) logger.Log("Server disconnect client:" + player);
 
@@ -495,22 +539,22 @@ namespace Mirage
         /// <summary>
         /// This class will later be removed when we have a better implementation for IDataHandler
         /// </summary>
-        class DataHandler : IDataHandler
+        private class DataHandler : IDataHandler
         {
-            readonly IMessageReceiver messageHandler;
-            readonly Dictionary<IConnection, INetworkPlayer> players;
+            private readonly IMessageReceiver _messageHandler;
+            private readonly Dictionary<IConnection, INetworkPlayer> _players;
 
             public DataHandler(IMessageReceiver messageHandler, Dictionary<IConnection, INetworkPlayer> connections)
             {
-                this.messageHandler = messageHandler;
-                players = connections;
+                _messageHandler = messageHandler;
+                _players = connections;
             }
 
             public void ReceiveMessage(IConnection connection, ArraySegment<byte> message)
             {
-                if (players.TryGetValue(connection, out INetworkPlayer player))
+                if (_players.TryGetValue(connection, out var player))
                 {
-                    messageHandler.HandleMessage(player, message);
+                    _messageHandler.HandleMessage(player, message);
                 }
                 else
                 {

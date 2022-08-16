@@ -35,7 +35,7 @@ namespace Mirage.RemoteCalls
                 payload = writer.ToArraySegment()
             };
 
-            (UniTask<T> task, int id) = behaviour.ClientObjectManager.CreateReplyTask<T>();
+            (var task, var id) = behaviour.ClientObjectManager.CreateReplyTask<T>();
 
             message.replyId = id;
 
@@ -44,10 +44,10 @@ namespace Mirage.RemoteCalls
             return task;
         }
 
-        static void Validate(NetworkBehaviour behaviour, int index, bool requireAuthority)
+        private static void Validate(NetworkBehaviour behaviour, int index, bool requireAuthority)
         {
-            RemoteCall rpc = behaviour.remoteCallCollection.Get(index);
-            INetworkClient client = behaviour.Client;
+            var rpc = behaviour.RemoteCallCollection.Get(index);
+            var client = behaviour.Client;
 
             if (client == null || !client.Active)
             {
@@ -55,15 +55,43 @@ namespace Mirage.RemoteCalls
             }
 
             // if authority is required, then client must have authority to send
-            if (requireAuthority && !(behaviour.HasAuthority))
+            if (requireAuthority && !behaviour.HasAuthority)
             {
-                throw new UnauthorizedAccessException($"Trying to send ServerRpc for object without authority. {rpc}");
+                throw new InvalidOperationException($"Trying to send ServerRpc for object without authority. {rpc}");
             }
 
             if (client.Player == null)
             {
                 throw new InvalidOperationException("Send ServerRpc attempted with no client connection.");
             }
+        }
+
+        /// <summary>
+        /// Used by weaver to check if ClientRPC should be invoked locally in host mode
+        /// </summary>
+        /// <param name="behaviour"></param>
+        /// <param name="target"></param>
+        /// <param name="player">player used for RpcTarget.Player</param>
+        /// <returns></returns>
+        public static bool ShouldInvokeLocally(NetworkBehaviour behaviour, bool requireAuthority)
+        {
+            // not client? error
+            if (!behaviour.IsClient)
+            {
+                throw new InvalidOperationException("Server RPC can only be called when client is active");
+            }
+
+            // not host? never invoke locally
+            if (!behaviour.IsServer)
+                return false;
+
+            // check if auth is required and that host has auth over the object
+            if (requireAuthority && !behaviour.HasAuthority)
+            {
+                throw new InvalidOperationException($"Trying to send ServerRpc for object without authority.");
+            }
+
+            return true;
         }
     }
 }

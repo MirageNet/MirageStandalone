@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq.Expressions;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -8,6 +9,12 @@ namespace Mirage.Weaver
 {
     public abstract class SerializeFunctionBase
     {
+        [Conditional("WEAVER_DEBUG_LOGS")]
+        private static void Log(string msg)
+        {
+            Console.Write($"[Weaver.SerializeFunction] {msg}\n");
+        }
+
         protected readonly Dictionary<TypeReference, MethodReference> funcs = new Dictionary<TypeReference, MethodReference>(new TypeReferenceComparer());
         private readonly IWeaverLogger logger;
         protected readonly ModuleDefinition module;
@@ -19,12 +26,17 @@ namespace Mirage.Weaver
         /// </summary>
         protected abstract string FunctionTypeLog { get; }
 
+        /// <summary>
+        /// Name for const that will tell other asmdef's that type has already generated function
+        /// </summary>
+        [System.Obsolete("broken in unity2021", true)]
+        protected abstract Type GeneratedAttribute { get; }
+
         protected SerializeFunctionBase(ModuleDefinition module, IWeaverLogger logger)
         {
             this.logger = logger;
             this.module = module;
         }
-
 
         public void Register(TypeReference dataType, MethodReference methodReference)
         {
@@ -37,9 +49,56 @@ namespace Mirage.Weaver
                     methodReference.Resolve());
             }
 
+            Log($"Register {FunctionTypeLog} for {dataType.FullName}, method:{methodReference.FullName}");
+
+
             // we need to import type when we Initialize Writers so import here in case it is used anywhere else
-            TypeReference imported = module.ImportReference(dataType);
+            var imported = module.ImportReference(dataType);
             funcs[imported] = methodReference;
+
+            // mark type as generated,
+            //MarkAsGenerated(dataType); <---  broken in unity2021
+        }
+
+        /// <summary>
+        /// Marks type as having write/read function if it is in the current module
+        /// </summary>
+        [System.Obsolete("broken in unity2021", true)]
+        private void MarkAsGenerated(TypeReference typeReference)
+        {
+            MarkAsGenerated(typeReference.Resolve());
+        }
+
+        /// <summary>
+        /// Marks type as having write/read function if it is in the current module
+        /// </summary>
+        [System.Obsolete("broken in unity2021", true)]
+        private void MarkAsGenerated(TypeDefinition typeDefinition)
+        {
+            // if in this module, then mark as generated
+            if (typeDefinition.Module != module)
+                return;
+
+            // dont add twice
+            if (typeDefinition.HasCustomAttribute(GeneratedAttribute))
+                return;
+
+            typeDefinition.AddCustomAttribute(module, GeneratedAttribute);
+        }
+
+        /// <summary>
+        /// Check if type has a write/read function generated in another module
+        /// <para>returns false if type is a member of current module</para>
+        /// </summary>
+        [System.Obsolete("broken in unity2021", true)]
+        private bool HasGeneratedFunctionInAnotherModule(TypeReference typeReference)
+        {
+            var def = typeReference.Resolve();
+            // if type is in this module, then we want to generate new function
+            if (def.Module == module)
+                return false;
+
+            return def.HasCustomAttribute(GeneratedAttribute);
         }
 
         /// <summary>
@@ -61,7 +120,7 @@ namespace Mirage.Weaver
         {
             try
             {
-                return GetFunction_Thorws(typeReference);
+                return GetFunction_Throws(typeReference);
             }
             catch (SerializeFunctionException e)
             {
@@ -78,7 +137,7 @@ namespace Mirage.Weaver
         /// <returns></returns>
         /// <exception cref="SerializeFunctionException">Throws if unable to find or create function</exception>
         // todo rename this to GetFunction once other classes are able to catch Exception
-        public MethodReference GetFunction_Thorws(TypeReference typeReference)
+        public MethodReference GetFunction_Throws(TypeReference typeReference)
         {
             // if is <T> then  just return generic write./read with T as the generic argument
             if (typeReference.IsGenericParameter)
@@ -86,15 +145,26 @@ namespace Mirage.Weaver
                 return CreateGenericFunction(typeReference);
             }
 
-            if (funcs.TryGetValue(typeReference, out MethodReference foundFunc))
+            // check if there is already a known function for type
+            // this will find extention methods within this module
+            if (funcs.TryGetValue(typeReference, out var foundFunc))
             {
                 return foundFunc;
             }
             else
             {
+                //// before generating new function, check if one was generated for type in its own module
+                //if (HasGeneratedFunctionInAnotherModule(typeReference)) < ---broken in unity2021
+                //{
+                //    return CreateGenericFunction(typeReference);
+                //}
+
+                Log($"Trying to generate {FunctionTypeLog} for {typeReference.FullName}");
                 return GenerateFunction(module.ImportReference(typeReference));
             }
         }
+
+
 
         private MethodReference GenerateFunction(TypeReference typeReference)
         {
@@ -112,7 +182,7 @@ namespace Mirage.Weaver
                 {
                     throw new SerializeFunctionException($"{typeReference.Name} is an unsupported type. Multidimensional arrays are not supported", typeReference);
                 }
-                TypeReference elementType = typeReference.GetElementType();
+                var elementType = typeReference.GetElementType();
                 return GenerateCollectionFunction(typeReference, elementType, ArrayExpression);
             }
 
@@ -120,28 +190,28 @@ namespace Mirage.Weaver
             if (typeReference.Is(typeof(Nullable<>)))
             {
                 var genericInstance = (GenericInstanceType)typeReference;
-                TypeReference elementType = genericInstance.GenericArguments[0];
+                var elementType = genericInstance.GenericArguments[0];
 
                 return GenerateCollectionFunction(typeReference, elementType, NullableExpression);
             }
             if (typeReference.Is(typeof(ArraySegment<>)))
             {
                 var genericInstance = (GenericInstanceType)typeReference;
-                TypeReference elementType = genericInstance.GenericArguments[0];
+                var elementType = genericInstance.GenericArguments[0];
 
-                return GenerateSegmentFunction(typeReference, elementType);
+                return GenerateCollectionFunction(typeReference, elementType, SegmentExpression);
             }
             if (typeReference.Is(typeof(List<>)))
             {
                 var genericInstance = (GenericInstanceType)typeReference;
-                TypeReference elementType = genericInstance.GenericArguments[0];
+                var elementType = genericInstance.GenericArguments[0];
 
                 return GenerateCollectionFunction(typeReference, elementType, ListExpression);
             }
 
 
             // check for invalid types
-            TypeDefinition typeDefinition = typeReference.Resolve();
+            var typeDefinition = typeReference.Resolve();
             if (typeDefinition == null)
             {
                 throw ThrowCantGenerate(typeReference);
@@ -186,29 +256,31 @@ namespace Mirage.Weaver
                 throw ThrowCantGenerate(typeReference, "abstract class");
             }
 
-            // generate writer for class/struct
-            return GenerateClassOrStructFunction(typeReference);
+            // generate writer for class/struct 
+            var generated = GenerateClassOrStructFunction(typeReference);
+            //MarkAsGenerated(typeDefinition); < ---broken in unity2021
+
+            return generated;
         }
 
-        SerializeFunctionException ThrowCantGenerate(TypeReference typeReference, string typeDescription = null)
+        private SerializeFunctionException ThrowCantGenerate(TypeReference typeReference, string typeDescription = null)
         {
-            string reasonStr = string.IsNullOrEmpty(typeDescription) ? string.Empty : $"{typeDescription} ";
+            var reasonStr = string.IsNullOrEmpty(typeDescription) ? string.Empty : $"{typeDescription} ";
             return new SerializeFunctionException($"Cannot generate {FunctionTypeLog} for {reasonStr}{typeReference.Name}. Use a supported type or provide a custom {FunctionTypeLog}", typeReference);
         }
 
         /// <summary>
         /// Creates Generic instance for Write{T} or Read{T} with <paramref name="argument"/> as then generic argument
+        /// <para>Can also create Write{int} if real type is given instead of generic argument</para>
         /// </summary>
         /// <param name="argument"></param>
         /// <returns></returns>
         private GenericInstanceMethod CreateGenericFunction(TypeReference argument)
         {
-            MethodReference method = GetGenericFunction();
+            var method = GetGenericFunction();
 
             var generic = new GenericInstanceMethod(method);
-            var genericParam = (GenericParameter)argument;
-            //var a = new GenericParameter(genericParam.Owner);
-            generic.GenericArguments.Add(genericParam);
+            generic.GenericArguments.Add(argument);
 
             return generic;
         }
@@ -223,10 +295,10 @@ namespace Mirage.Weaver
 
         protected abstract MethodReference GenerateEnumFunction(TypeReference typeReference);
         protected abstract MethodReference GenerateCollectionFunction(TypeReference typeReference, TypeReference elementType, Expression<Action> genericExpression);
-        protected abstract MethodReference GenerateSegmentFunction(TypeReference typeReference, TypeReference elementType);
 
         protected abstract Expression<Action> ArrayExpression { get; }
         protected abstract Expression<Action> ListExpression { get; }
+        protected abstract Expression<Action> SegmentExpression { get; }
         protected abstract Expression<Action> NullableExpression { get; }
 
         protected abstract MethodReference GenerateClassOrStructFunction(TypeReference typeReference);

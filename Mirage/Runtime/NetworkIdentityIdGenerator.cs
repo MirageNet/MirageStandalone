@@ -5,8 +5,6 @@ using System.Security.Cryptography;
 using UnityEngine;
 using Mirage.Logging;
 
-
-
 using UnityEditor;
 
 #if UNITY_2021_2_OR_NEWER
@@ -19,13 +17,13 @@ namespace Mirage
 {
     internal static class NetworkIdentityIdGenerator
     {
-        static readonly ILogger logger = LogFactory.GetLogger(nameof(NetworkIdentityIdGenerator));
+        private static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkIdentityIdGenerator));
 
         /// <summary>
         /// Keep track of all sceneIds to detect scene duplicates
         /// <para>we only need to check the id part here. The Scene Hash part is only needed when a scene is duplciated</para>
         /// </summary>
-        internal static readonly Dictionary<int, NetworkIdentity> sceneIds = new Dictionary<int, NetworkIdentity>();
+        internal static readonly Dictionary<int, NetworkIdentity> _sceneIds = new Dictionary<int, NetworkIdentity>();
 
         /// <summary>
         /// Sets the scene hash on the NetworkIdentity
@@ -39,7 +37,7 @@ namespace Mirage
             var wrapper = new IdentityWrapper(identity);
 
             // get deterministic scene hash
-            int pathHash = GetSceneHash(identity);
+            var pathHash = GetSceneHash(identity);
 
             wrapper.SceneHash = pathHash;
 
@@ -76,7 +74,7 @@ namespace Mirage
                     AssignAssetID(identity, GetStagePath(stage));
                 }
             }
-            else if (SceneObjectWithPrefabParent(identity, out GameObject parent))
+            else if (SceneObjectWithPrefabParent(identity, out var parent))
             {
                 AssignSceneID(identity);
                 AssignAssetID(identity, parent);
@@ -88,7 +86,7 @@ namespace Mirage
             }
         }
 
-        static string GetStagePath(PrefabStage stage)
+        private static string GetStagePath(PrefabStage stage)
         {
             // NOTE: might make sense to use GetPrefabStage for asset
             //       path, but let's not touch it while it works.
@@ -99,7 +97,7 @@ namespace Mirage
 #endif
         }
 
-        static bool SceneObjectWithPrefabParent(NetworkIdentity identity, out GameObject parent)
+        private static bool SceneObjectWithPrefabParent(NetworkIdentity identity, out GameObject parent)
         {
             parent = null;
 
@@ -117,19 +115,19 @@ namespace Mirage
             return true;
         }
 
-        static void AssignAssetID(NetworkIdentity identity, GameObject parent)
+        private static void AssignAssetID(NetworkIdentity identity, GameObject parent)
         {
-            string path = AssetDatabase.GetAssetPath(parent);
+            var path = AssetDatabase.GetAssetPath(parent);
             AssignAssetID(identity, path);
         }
 
-        static void AssignAssetID(NetworkIdentity identity)
+        private static void AssignAssetID(NetworkIdentity identity)
         {
-            string path = AssetDatabase.GetAssetPath(identity.gameObject);
+            var path = AssetDatabase.GetAssetPath(identity.gameObject);
             AssignAssetID(identity, path);
         }
 
-        static void AssignAssetID(NetworkIdentity identity, string path)
+        private static void AssignAssetID(NetworkIdentity identity, string path)
         {
             if (string.IsNullOrEmpty(path))
             {
@@ -151,7 +149,7 @@ namespace Mirage
         /// Id must be assigned at edit time. This is to make sure they are the the same between builds
         /// </para>
         /// </remarks>
-        static void AssignSceneID(NetworkIdentity identity)
+        private static void AssignSceneID(NetworkIdentity identity)
         {
             // Only generate at editor time
             if (Application.isPlaying)
@@ -170,7 +168,7 @@ namespace Mirage
                 if (BuildPipeline.isBuildingPlayer)
                     throw new InvalidOperationException($"Scene {identity.gameObject.scene.path} needs to be opened and resaved before building, because the scene object {identity.name} has no valid sceneId yet.");
 
-                int randomId = GetRandomUInt();
+                var randomId = GetRandomUInt();
 
                 // only assign if not a duplicate of an existing scene id (small chance, but possible)
                 if (!IsDuplicate(identity, randomId))
@@ -180,12 +178,12 @@ namespace Mirage
             }
 
             // Add to dictionary so we can keep track of ID for duplicates
-            sceneIds[wrapper.SceneId] = identity;
+            _sceneIds[wrapper.SceneId] = identity;
         }
 
-        static bool IsDuplicate(NetworkIdentity identity, int sceneId)
+        private static bool IsDuplicate(NetworkIdentity identity, int sceneId)
         {
-            if (sceneIds.TryGetValue(sceneId, out NetworkIdentity existing))
+            if (_sceneIds.TryGetValue(sceneId, out var existing))
             {
                 // if existing is null we can use this id
                 if (existing == null)
@@ -205,12 +203,12 @@ namespace Mirage
         /// Gets random int using secure randon
         /// </summary>
         /// <returns></returns>
-        static int GetRandomUInt()
+        private static int GetRandomUInt()
         {
             // use Crypto RNG to avoid having time based duplicates
             using (var rng = new RNGCryptoServiceProvider())
             {
-                byte[] bytes = new byte[4];
+                var bytes = new byte[4];
                 rng.GetBytes(bytes);
                 return BitConverter.ToInt32(bytes, 0);
             }
@@ -219,55 +217,59 @@ namespace Mirage
         /// <summary>
         /// Wrapper for NetworkIdentity that will set and save fields
         /// </summary>
-        class IdentityWrapper
+        private class IdentityWrapper
         {
-            const long ID_MASK = (long)0x0000_0000_FFFF_FFFFul;
-            const long HASH_MASK = unchecked((long)0xFFFF_FFFF_0000_0000ul);
-            readonly NetworkIdentity identity;
-            readonly SerializedObject _serializedObject;
-            readonly SerializedProperty _prefabHashProp;
-            readonly SerializedProperty _sceneIdProp;
+            private const ulong ID_MASK = 0x0000_0000_FFFF_FFFFul;
+            private const ulong HASH_MASK = 0xFFFF_FFFF_0000_0000ul;
+            private readonly NetworkIdentity _identity;
 
             public IdentityWrapper(NetworkIdentity identity)
             {
                 if (identity == null) throw new ArgumentNullException(nameof(identity));
 
-                this.identity = identity;
-
-                _serializedObject = new SerializedObject(identity);
-                _prefabHashProp = _serializedObject.FindProperty("_prefabHash");
-                _sceneIdProp = _serializedObject.FindProperty("_sceneId");
+                _identity = identity;
             }
 
             public int PrefabHash
             {
-                get => _prefabHashProp.intValue;
+                get => _identity.Editor_PrefabHash;
                 set
                 {
-                    _prefabHashProp.intValue = value;
-                    _serializedObject.ApplyModifiedProperties();
+                    if (PrefabHash == value)
+                        return;
+
+                    Undo.RecordObject(_identity, "Set PrefabHash");
+                    _identity.Editor_PrefabHash = value;
                 }
             }
 
 
             public int SceneId
             {
-                get => (int)(_sceneIdProp.intValue & ID_MASK);
+                get => (int)(_identity.Editor_SceneId & ID_MASK);
                 set
                 {
+                    // just use get here so we get the correct part of id
+                    if (SceneId == value)
+                        return;
+
+                    Undo.RecordObject(_identity, "Set SceneId");
                     // have to mask incoming number incase it is negative
-                    _sceneIdProp.longValue = (_sceneIdProp.longValue & HASH_MASK) | (value & ID_MASK);
-                    _serializedObject.ApplyModifiedProperties();
+                    _identity.Editor_SceneId = (_identity.SceneId & HASH_MASK) | ((ulong)value & ID_MASK);
                 }
             }
 
             public int SceneHash
             {
-                get => (int)((_sceneIdProp.intValue & HASH_MASK) >> 32);
+                get => (int)((_identity.Editor_SceneId & HASH_MASK) >> 32);
                 set
                 {
-                    _sceneIdProp.longValue = (((long)value) << 32) | (_sceneIdProp.longValue & ID_MASK);
-                    _serializedObject.ApplyModifiedProperties();
+                    // just use get here so we get the correct part of id
+                    if (SceneHash == value)
+                        return;
+
+                    Undo.RecordObject(_identity, "Set SceneHash");
+                    _identity.Editor_SceneId = (((ulong)value) << 32) | (_identity.SceneId & ID_MASK);
                 }
             }
 

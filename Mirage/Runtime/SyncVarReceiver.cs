@@ -9,13 +9,13 @@ namespace Mirage
     /// </summary>
     public class SyncVarReceiver
     {
-        static readonly ILogger logger = LogFactory.GetLogger(typeof(SyncVarReceiver));
+        private static readonly ILogger logger = LogFactory.GetLogger(typeof(SyncVarReceiver));
 
-        private readonly IObjectLocator objectLocator;
+        private readonly IObjectLocator _objectLocator;
 
         public SyncVarReceiver(NetworkClient client, IObjectLocator objectLocator)
         {
-            this.objectLocator = objectLocator;
+            _objectLocator = objectLocator;
             if (client.IsConnected)
             {
                 AddHandlers(client);
@@ -39,13 +39,13 @@ namespace Mirage
             }
         }
 
-        void OnUpdateVarsMessage(UpdateVarsMessage msg)
+        private void OnUpdateVarsMessage(UpdateVarsMessage msg)
         {
             if (logger.LogEnabled()) logger.Log("ClientScene.OnUpdateVarsMessage " + msg.netId);
 
-            if (objectLocator.TryGetIdentity(msg.netId, out NetworkIdentity localObject))
+            if (_objectLocator.TryGetIdentity(msg.netId, out var localObject))
             {
-                using (PooledNetworkReader networkReader = NetworkReaderPool.GetReader(msg.payload))
+                using (var networkReader = NetworkReaderPool.GetReader(msg.payload, _objectLocator))
                     localObject.OnDeserializeAll(networkReader, false);
             }
             else

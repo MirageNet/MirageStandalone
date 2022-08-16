@@ -7,7 +7,7 @@ namespace Mirage.Weaver
 {
     public class SyncObjectProcessor
     {
-        readonly List<FieldDefinition> syncObjects = new List<FieldDefinition>();
+        private readonly List<FieldDefinition> syncObjects = new List<FieldDefinition>();
 
         private readonly Readers readers;
         private readonly Writers writers;
@@ -28,14 +28,14 @@ namespace Mirage.Weaver
         /// <returns></returns>
         public void ProcessSyncObjects(TypeDefinition td)
         {
-            foreach (FieldDefinition fd in td.Fields)
+            foreach (var fd in td.Fields)
             {
                 if (fd.FieldType.IsGenericParameter || fd.ContainsGenericParameter) // Just ignore all generic objects.
                 {
                     continue;
                 }
 
-                TypeDefinition tf = fd.FieldType.Resolve();
+                var tf = fd.FieldType.Resolve();
                 if (tf == null)
                 {
                     continue;
@@ -63,11 +63,11 @@ namespace Mirage.Weaver
         /// </summary>
         /// <param name="td">The synclist class</param>
         /// <param name="mirrorBaseType">the base SyncObject td inherits from</param>
-        void GenerateReadersAndWriters(TypeReference tr)
+        private void GenerateReadersAndWriters(TypeReference tr)
         {
             if (tr is GenericInstanceType genericInstance)
             {
-                foreach (TypeReference argument in genericInstance.GenericArguments)
+                foreach (var argument in genericInstance.GenericArguments)
                 {
                     if (!argument.IsGenericParameter)
                     {
@@ -83,13 +83,13 @@ namespace Mirage.Weaver
             }
         }
 
-        void RegisterSyncObjects(TypeDefinition netBehaviourSubclass)
+        private void RegisterSyncObjects(TypeDefinition netBehaviourSubclass)
         {
             Weaver.DebugLog(netBehaviourSubclass, "  GenerateConstants ");
 
             netBehaviourSubclass.AddToConstructor(logger, (worker) =>
             {
-                foreach (FieldDefinition fd in syncObjects)
+                foreach (var fd in syncObjects)
                 {
                     GenerateSyncObjectRegistration(worker, fd);
                 }
@@ -120,13 +120,13 @@ namespace Mirage.Weaver
             // generates code like:
             this.InitSyncObject(m_sizes);
         */
-        static void GenerateSyncObjectRegistration(ILProcessor worker, FieldDefinition fd)
+        private static void GenerateSyncObjectRegistration(ILProcessor worker, FieldDefinition fd)
         {
             worker.Append(worker.Create(OpCodes.Ldarg_0));
             worker.Append(worker.Create(OpCodes.Ldarg_0));
             worker.Append(worker.Create(OpCodes.Ldfld, fd));
 
-            MethodReference initSyncObjectRef = worker.Body.Method.Module.ImportReference<NetworkBehaviour>(nb => nb.InitSyncObject(default));
+            var initSyncObjectRef = worker.Body.Method.Module.ImportReference<NetworkBehaviour>(nb => nb.InitSyncObject(default));
             worker.Append(worker.Create(OpCodes.Call, initSyncObjectRef));
         }
     }

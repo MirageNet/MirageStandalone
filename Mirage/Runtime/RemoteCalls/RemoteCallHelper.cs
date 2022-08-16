@@ -8,7 +8,7 @@ namespace Mirage.RemoteCalls
 {
     public class RemoteCallCollection
     {
-        static readonly ILogger logger = LogFactory.GetLogger(typeof(RemoteCallCollection));
+        private static readonly ILogger logger = LogFactory.GetLogger(typeof(RemoteCallCollection));
 
         public RemoteCall[] remoteCalls;
 
@@ -28,7 +28,7 @@ namespace Mirage.RemoteCalls
 
             if (logger.LogEnabled())
             {
-                string requireAuthorityMessage = invokerType == RpcInvokeType.ServerRpc ? $" RequireAuthority:{cmdRequireAuthority}" : "";
+                var requireAuthorityMessage = invokerType == RpcInvokeType.ServerRpc ? $" RequireAuthority:{cmdRequireAuthority}" : "";
                 logger.Log($"RegisterDelegate invokerType: {invokerType} method: {func.Method.Name}{requireAuthorityMessage}");
             }
         }
@@ -38,9 +38,9 @@ namespace Mirage.RemoteCalls
             async UniTaskVoid Wrapper(NetworkBehaviour obj, NetworkReader reader, INetworkPlayer senderPlayer, int replyId)
             {
                 /// invoke the serverRpc and send a reply message
-                T result = await func(obj, reader, senderPlayer, replyId);
+                var result = await func(obj, reader, senderPlayer, replyId);
 
-                using (PooledNetworkWriter writer = NetworkWriterPool.GetWriter())
+                using (var writer = NetworkWriterPool.GetWriter())
                 {
                     writer.Write(result);
                     var serverRpcReply = new ServerRpcReply
@@ -128,7 +128,7 @@ namespace Mirage.RemoteCalls
                 && this.function == function;
         }
 
-        bool AreEqualIgnoringGeneric(Type declaringType, RpcDelegate function)
+        private bool AreEqualIgnoringGeneric(Type declaringType, RpcDelegate function)
         {
             // if this.type not generic, then not equal
             if (!DeclaringType.IsGenericType)

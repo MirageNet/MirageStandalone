@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Linq.Expressions;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -36,34 +37,41 @@ namespace Mirage.Weaver
         // todo add documentation 
         public static Instruction Create(this ILProcessor worker, OpCode code, LambdaExpression expression)
         {
-            MethodReference typeref = worker.Body.Method.Module.ImportReference(expression);
+            var typeref = worker.Body.Method.Module.ImportReference(expression);
             return worker.Create(code, typeref);
         }
 
         // todo add documentation 
         public static Instruction Create(this ILProcessor worker, OpCode code, Expression<Action> expression)
         {
-            MethodReference typeref = worker.Body.Method.Module.ImportReference(expression);
+            var typeref = worker.Body.Method.Module.ImportReference(expression);
             return worker.Create(code, typeref);
         }
 
         // todo add documentation 
         public static Instruction Create<T>(this ILProcessor worker, OpCode code, Expression<Action<T>> expression)
         {
-            MethodReference typeref = worker.Body.Method.Module.ImportReference(expression);
+            var typeref = worker.Body.Method.Module.ImportReference(expression);
             return worker.Create(code, typeref);
         }
 
         // todo add documentation 
         public static Instruction Create<T, TR>(this ILProcessor worker, OpCode code, Expression<Func<T, TR>> expression)
         {
-            MethodReference typeref = worker.Body.Method.Module.ImportReference(expression);
+            var typeref = worker.Body.Method.Module.ImportReference(expression);
             return worker.Create(code, typeref);
         }
 
         public static SequencePoint GetSequencePoint(this MethodDefinition method, Instruction instruction)
         {
-            SequencePoint sequencePoint = method.DebugInformation.GetSequencePoint(instruction);
+            var sequencePoint = method.DebugInformation.GetSequencePoint(instruction);
+            return sequencePoint;
+        }
+
+        public static SequencePoint GetFirstSequencePoint(this MethodDefinition method)
+        {
+            var firstInstruction = method.Body.Instructions.First();
+            var sequencePoint = method.DebugInformation.GetSequencePoint(firstInstruction);
             return sequencePoint;
         }
     }

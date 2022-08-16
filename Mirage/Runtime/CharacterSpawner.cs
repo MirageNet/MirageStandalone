@@ -13,7 +13,7 @@ namespace Mirage
     /// </summary>
     public class CharacterSpawner : MonoBehaviour
     {
-        static readonly ILogger logger = LogFactory.GetLogger(typeof(CharacterSpawner));
+        private static readonly ILogger logger = LogFactory.GetLogger(typeof(CharacterSpawner));
 
         [FormerlySerializedAs("client")]
         public NetworkClient Client;
@@ -32,6 +32,25 @@ namespace Mirage
         /// Whether to span the player upon connection automatically
         /// </summary>
         public bool AutoSpawn = true;
+
+        public int startPositionIndex;
+
+        /// <summary>
+        /// List of transforms where players can be spawned
+        /// </summary>
+        public List<Transform> startPositions = new List<Transform>();
+
+        /// <summary>
+        /// Enumeration of methods of where to spawn player objects in multiplayer games.
+        /// </summary>
+        public enum PlayerSpawnMethod { Random, RoundRobin }
+
+        /// <summary>
+        /// The current method of spawning players used by the CharacterSpawner.
+        /// </summary>
+        [Tooltip("Round Robin or Random order of Start Position selection")]
+        public PlayerSpawnMethod playerSpawnMethod;
+
 
         // Start is called before the first frame update
         public virtual void Awake()
@@ -62,7 +81,7 @@ namespace Mirage
             }
         }
 
-        void OnDestroy()
+        private void OnDestroy()
         {
             if (Client != null && SceneManager != null)
             {
@@ -114,7 +133,7 @@ namespace Mirage
             Client.Send(new AddCharacterMessage());
         }
 
-        void OnServerAddPlayerInternal(INetworkPlayer player, AddCharacterMessage msg)
+        private void OnServerAddPlayerInternal(INetworkPlayer player, AddCharacterMessage msg)
         {
             logger.Log("CharacterSpawner.OnServerAddPlayer");
 
@@ -138,12 +157,20 @@ namespace Mirage
         /// <param name="player">Connection from client.</param>
         public virtual void OnServerAddPlayer(INetworkPlayer player)
         {
-            Transform startPos = GetStartPosition();
-            NetworkIdentity character = startPos != null
+            var startPos = GetStartPosition();
+            var character = startPos != null
                 ? Instantiate(PlayerPrefab, startPos.position, startPos.rotation)
                 : Instantiate(PlayerPrefab);
 
+            SetCharacterName(player, character);
             ServerObjectManager.AddCharacter(player, character.gameObject);
+        }
+
+        protected virtual void SetCharacterName(INetworkPlayer player, NetworkIdentity character)
+        {
+            // When spawning a player game object, Unity defaults to something like "MyPlayerObject(clone)"
+            // which sucks... So let's override it and make it easier to debug. Credit to Mirror for the nice touch.
+            character.name = $"{PlayerPrefab.name} {player.Address}";
         }
 
         /// <summary>
@@ -162,28 +189,10 @@ namespace Mirage
             }
             else
             {
-                Transform startPosition = startPositions[startPositionIndex];
+                var startPosition = startPositions[startPositionIndex];
                 startPositionIndex = (startPositionIndex + 1) % startPositions.Count;
                 return startPosition;
             }
         }
-
-        public int startPositionIndex;
-
-        /// <summary>
-        /// List of transforms where players can be spawned
-        /// </summary>
-        public List<Transform> startPositions = new List<Transform>();
-
-        /// <summary>
-        /// Enumeration of methods of where to spawn player objects in multiplayer games.
-        /// </summary>
-        public enum PlayerSpawnMethod { Random, RoundRobin }
-
-        /// <summary>
-        /// The current method of spawning players used by the CharacterSpawner.
-        /// </summary>
-        [Tooltip("Round Robin or Random order of Start Position selection")]
-        public PlayerSpawnMethod playerSpawnMethod;
     }
 }

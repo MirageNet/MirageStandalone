@@ -1,10 +1,11 @@
 using System.Linq;
 using System.Reflection;
 using Mono.Cecil;
-using Mono.Collections.Generic;
 
 namespace Mirage.Weaver
 {
+    // original code under MIT Copyright (c) 2021 Unity Technologies
+    // https://github.com/Unity-Technologies/com.unity.netcode.gameobjects/blob/472d51b34520e8fb6f0aa43fd56d162c3029e0b0/com.unity.netcode.gameobjects/Editor/CodeGen/PostProcessorReflectionImporter.cs
     internal class PostProcessorReflectionImporter : DefaultReflectionImporter
     {
         private const string SystemPrivateCoreLib = "System.Private.CoreLib";
@@ -27,7 +28,7 @@ namespace Mirage.Weaver
                 return _correctCorlib;
             }
 
-            if (TryImportFast(name, out AssemblyNameReference reference))
+            if (TryImportFast(name, out var reference))
             {
                 return reference;
             }
@@ -41,18 +42,18 @@ namespace Mirage.Weaver
         /// <param name="name"></param>
         /// <param name="assembly_reference"></param>
         /// <returns>false if referene failed to be found</returns>
-        bool TryImportFast(AssemblyName name, out AssemblyNameReference assembly_reference)
+        private bool TryImportFast(AssemblyName name, out AssemblyNameReference assembly_reference)
         {
             // getting full name is expensive
             // we cant cache it because the AssemblyName object might be different each time (different hashcode)
             // we can get it once before the loop instead of inside the loop, like in DefaultImporter:
             // https://github.com/jbevain/cecil/blob/0.10/Mono.Cecil/Import.cs#L335
-            string fullName = name.FullName;
+            var fullName = name.FullName;
 
-            Collection<AssemblyNameReference> references = module.AssemblyReferences;
-            for (int i = 0; i < references.Count; i++)
+            var references = module.AssemblyReferences;
+            for (var i = 0; i < references.Count; i++)
             {
-                AssemblyNameReference reference = references[i];
+                var reference = references[i];
                 if (fullName == reference.FullName)
                 {
                     assembly_reference = reference;

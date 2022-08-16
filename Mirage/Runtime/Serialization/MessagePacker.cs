@@ -35,9 +35,9 @@ namespace Mirage.Serialization
         /// <typeparam name="T"></typeparam>
         public static void RegisterMessage<T>()
         {
-            int id = GetId<T>();
+            var id = GetId<T>();
 
-            if (messageTypes.TryGetValue(id, out Type type) && type != typeof(T))
+            if (messageTypes.TryGetValue(id, out var type) && type != typeof(T))
             {
                 throw new ArgumentException($"Message {typeof(T)} and {messageTypes[id]} have the same ID. Change the name of one of those messages");
             }
@@ -66,10 +66,10 @@ namespace Mirage.Serialization
             // this works because value types cannot be derived
             // if it is a reference type (for example IMessageBase),
             // ask the message for the real type
-            Type mstType = default(T) == null && message != null ? message.GetType() : typeof(T);
+            var type = default(T) == null && message != null ? message.GetType() : typeof(T);
 
-            int msgType = GetId(mstType);
-            writer.WriteUInt16((ushort)msgType);
+            var id = GetId(type);
+            writer.WriteUInt16((ushort)id);
 
             writer.Write(message);
         }
@@ -79,29 +79,55 @@ namespace Mirage.Serialization
         // => useful for local client message enqueue
         public static byte[] Pack<T>(T message)
         {
-            using (PooledNetworkWriter writer = NetworkWriterPool.GetWriter())
+            using (var writer = NetworkWriterPool.GetWriter())
             {
                 Pack(message, writer);
-                byte[] data = writer.ToArray();
+                var data = writer.ToArray();
 
                 return data;
             }
         }
 
-        // unpack a message we received
-        public static T Unpack<T>(byte[] data)
-        {
-            using (PooledNetworkReader networkReader = NetworkReaderPool.GetReader(data))
-            {
-                int msgType = GetId<T>();
+        /// <summary>
+        /// unpack a message we received
+        /// <para>Use <see cref="Unpack{T}(byte[], IObjectLocator)"/> Instead to if you need to read NetworkIdentities</para>
+        /// </summary>
+        [System.Obsolete("Use Unpack(byte[], IObjectLocator) instead")]
+        public static T Unpack<T>(byte[] data) => Unpack<T>(data, null);
 
-                int id = networkReader.ReadUInt16();
-                if (id != msgType)
-                    throw new FormatException("Invalid message,  could not unpack " + typeof(T).FullName);
+        /// <summary>
+        /// unpack a message we received
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="data"></param>
+        /// <param name="objectLocator">Can be null, but must be set in order to read NetworkIdentity Values</param>
+        /// <returns></returns>
+        /// <exception cref="FormatException"></exception>
+        public static T Unpack<T>(byte[] data, IObjectLocator objectLocator)
+        {
+            using (var networkReader = NetworkReaderPool.GetReader(data, objectLocator))
+            {
+                ValidateId<T>(networkReader);
 
                 return networkReader.Read<T>();
             }
         }
+
+        /// <summary>
+        /// Check that id of type is the same as message header
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="networkReader"></param>
+        /// <exception cref="FormatException"></exception>
+        private static void ValidateId<T>(PooledNetworkReader networkReader)
+        {
+            var typeId = GetId<T>();
+
+            int id = networkReader.ReadUInt16();
+            if (id != typeId)
+                throw new FormatException("Invalid message,  could not unpack " + typeof(T).FullName);
+        }
+
         // unpack message after receiving
         // -> pass NetworkReader so it's less strange if we create it in here
         //    and pass it upwards.

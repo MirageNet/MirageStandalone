@@ -7,8 +7,8 @@ namespace Mirage.Serialization
 {
     public static class NetworkWriterPool
     {
-        static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkWriterPool));
-        static Pool<PooledNetworkWriter> pool;
+        private static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkWriterPool));
+        private static Pool<PooledNetworkWriter> pool;
 
         /// <summary>
         /// Current Size of buffers, or null before Configure has been called
@@ -18,8 +18,8 @@ namespace Mirage.Serialization
         static NetworkWriterPool()
         {
             // auto configure so that pool can be used without having to manually call it
-            var config = new Config();
-            Configure(config.MaxPacketSize);
+            // 1300 is greater than udp's MTU value
+            Configure(1300);
         }
 
         /// <summary>
@@ -46,7 +46,7 @@ namespace Mirage.Serialization
         public static PooledNetworkWriter GetWriter()
         {
             if (pool == null) throw new InvalidOperationException("Configure must be called before ");
-            PooledNetworkWriter writer = pool.Take();
+            var writer = pool.Take();
             writer.Reset();
             return writer;
         }
@@ -57,11 +57,11 @@ namespace Mirage.Serialization
     /// </summary>
     public sealed class PooledNetworkWriter : NetworkWriter, IDisposable
     {
-        private readonly Pool<PooledNetworkWriter> pool;
+        private readonly Pool<PooledNetworkWriter> _pool;
 
         private PooledNetworkWriter(int bufferSize, Pool<PooledNetworkWriter> pool) : base(bufferSize)
         {
-            this.pool = pool ?? throw new ArgumentNullException(nameof(pool));
+            _pool = pool ?? throw new ArgumentNullException(nameof(pool));
         }
 
         public static PooledNetworkWriter CreateNew(int bufferSize, Pool<PooledNetworkWriter> pool)
@@ -75,7 +75,7 @@ namespace Mirage.Serialization
         public void Release()
         {
             Reset();
-            pool.Put(this);
+            _pool.Put(this);
         }
 
         void IDisposable.Dispose() => Release();

@@ -23,12 +23,12 @@ namespace Mirage
     /// <para>Some of the built-in components of the networking system are derived from NetworkBehaviour, including NetworkTransport, NetworkAnimator and NetworkProximityChecker.</para>
     /// </remarks>
     [AddComponentMenu("")]
-    [HelpURL("https://miragenet.github.io/Mirage/Articles/Guides/GameObjects/NetworkBehaviour.html")]
+    [HelpURL("https://miragenet.github.io/Mirage/docs/guides/game-objects/network-behaviour")]
     public abstract class NetworkBehaviour : MonoBehaviour
     {
-        static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkBehaviour));
+        private static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkBehaviour));
 
-        internal float lastSyncTime;
+        internal float _lastSyncTime;
 
         // hidden because NetworkBehaviourInspector shows it only if has OnSerialize.
         /// <summary>
@@ -122,19 +122,20 @@ namespace Mirage
         public NetworkTime NetworkTime => World.Time;
 
         protected internal ulong SyncVarDirtyBits { get; private set; }
-        ulong syncVarHookGuard;
+
+        private ulong _syncVarHookGuard;
 
         protected internal bool GetSyncVarHookGuard(ulong dirtyBit)
         {
-            return (syncVarHookGuard & dirtyBit) != 0UL;
+            return (_syncVarHookGuard & dirtyBit) != 0UL;
         }
 
         protected internal void SetSyncVarHookGuard(ulong dirtyBit, bool value)
         {
             if (value)
-                syncVarHookGuard |= dirtyBit;
+                _syncVarHookGuard |= dirtyBit;
             else
-                syncVarHookGuard &= ~dirtyBit;
+                _syncVarHookGuard &= ~dirtyBit;
         }
 
         /// <summary>
@@ -145,7 +146,7 @@ namespace Mirage
         /// <summary>
         /// NetworkIdentity component caching for easier access
         /// </summary>
-        NetworkIdentity _identity;
+        private NetworkIdentity _identity;
 
 
         // TODO: remove this bit once Unity drops support for 2019 LTS
@@ -186,7 +187,7 @@ namespace Mirage
             }
         }
 
-        private int? componentIndex;
+        private int? _componentIndex;
         public const int COMPONENT_INDEX_NOT_FOUND = -1;
         /// <summary>
         /// Returns the index of the component on this object
@@ -195,16 +196,16 @@ namespace Mirage
         {
             get
             {
-                if (componentIndex.HasValue)
-                    return componentIndex.Value;
+                if (_componentIndex.HasValue)
+                    return _componentIndex.Value;
 
                 // note: FindIndex causes allocations, we search manually instead
-                for (int i = 0; i < Identity.NetworkBehaviours.Length; i++)
+                for (var i = 0; i < Identity.NetworkBehaviours.Length; i++)
                 {
-                    NetworkBehaviour component = Identity.NetworkBehaviours[i];
+                    var component = Identity.NetworkBehaviours[i];
                     if (component == this)
                     {
-                        componentIndex = i;
+                        _componentIndex = i;
                         return i;
                     }
                 }
@@ -255,15 +256,11 @@ namespace Mirage
             }
         }
 
-        #region Helpers
-
         protected internal bool SyncVarEqual<T>(T value, T fieldValue)
         {
             // newly initialized or changed value?
             return EqualityComparer<T>.Default.Equals(value, fieldValue);
         }
-
-        #endregion
 
         /// <summary>
         /// Used to set the behaviour as dirty, so that a network update will be sent for the object.
@@ -283,25 +280,25 @@ namespace Mirage
         /// </summary>
         public void ClearAllDirtyBits()
         {
-            lastSyncTime = Time.time;
+            _lastSyncTime = Time.time;
             SyncVarDirtyBits = 0L;
 
             // flush all unsynchronized changes in syncobjects
             // note: don't use List.ForEach here, this is a hot path
             //   List.ForEach: 432b/frame
             //   for: 231b/frame
-            for (int i = 0; i < syncObjects.Count; ++i)
+            for (var i = 0; i < syncObjects.Count; ++i)
             {
                 syncObjects[i].Flush();
             }
         }
 
-        bool AnySyncObjectDirty()
+        private bool AnySyncObjectDirty()
         {
             // note: don't use Linq here. 1200 networked objects:
             //   Linq: 187KB GC/frame;, 2.66ms time
             //   for: 8KB GC/frame; 1.28ms time
-            for (int i = 0; i < syncObjects.Count; ++i)
+            for (var i = 0; i < syncObjects.Count; ++i)
             {
                 if (syncObjects[i].IsDirty)
                 {
@@ -313,7 +310,7 @@ namespace Mirage
 
         public bool IsDirty()
         {
-            if (Time.time - lastSyncTime >= syncInterval)
+            if (Time.time - _lastSyncTime >= syncInterval)
             {
                 return SyncVarDirtyBits != 0L || AnySyncObjectDirty();
             }
@@ -353,7 +350,7 @@ namespace Mirage
                 objectWritten = SerializeObjectsDelta(writer);
             }
 
-            bool syncVarWritten = SerializeSyncVars(writer, initialState);
+            var syncVarWritten = SerializeSyncVars(writer, initialState);
 
             return objectWritten || syncVarWritten;
         }
@@ -407,9 +404,9 @@ namespace Mirage
         internal ulong DirtyObjectBits()
         {
             ulong dirtyObjects = 0;
-            for (int i = 0; i < syncObjects.Count; i++)
+            for (var i = 0; i < syncObjects.Count; i++)
             {
-                ISyncObject syncObject = syncObjects[i];
+                var syncObject = syncObjects[i];
                 if (syncObject.IsDirty)
                 {
                     dirtyObjects |= 1UL << i;
@@ -420,10 +417,10 @@ namespace Mirage
 
         public bool SerializeObjectsAll(NetworkWriter writer)
         {
-            bool dirty = false;
-            for (int i = 0; i < syncObjects.Count; i++)
+            var dirty = false;
+            for (var i = 0; i < syncObjects.Count; i++)
             {
-                ISyncObject syncObject = syncObjects[i];
+                var syncObject = syncObjects[i];
                 syncObject.OnSerializeAll(writer);
                 dirty = true;
             }
@@ -432,13 +429,13 @@ namespace Mirage
 
         public bool SerializeObjectsDelta(NetworkWriter writer)
         {
-            bool dirty = false;
+            var dirty = false;
             // write the mask
             writer.WritePackedUInt64(DirtyObjectBits());
             // serializable objects, such as synclists
-            for (int i = 0; i < syncObjects.Count; i++)
+            for (var i = 0; i < syncObjects.Count; i++)
             {
-                ISyncObject syncObject = syncObjects[i];
+                var syncObject = syncObjects[i];
                 if (syncObject.IsDirty)
                 {
                     syncObject.OnSerializeDelta(writer);
@@ -450,19 +447,19 @@ namespace Mirage
 
         internal void DeSerializeObjectsAll(NetworkReader reader)
         {
-            for (int i = 0; i < syncObjects.Count; i++)
+            for (var i = 0; i < syncObjects.Count; i++)
             {
-                ISyncObject syncObject = syncObjects[i];
+                var syncObject = syncObjects[i];
                 syncObject.OnDeserializeAll(reader);
             }
         }
 
         internal void DeSerializeObjectsDelta(NetworkReader reader)
         {
-            ulong dirty = reader.ReadPackedUInt64();
-            for (int i = 0; i < syncObjects.Count; i++)
+            var dirty = reader.ReadPackedUInt64();
+            for (var i = 0; i < syncObjects.Count; i++)
             {
-                ISyncObject syncObject = syncObjects[i];
+                var syncObject = syncObjects[i];
                 if ((dirty & (1UL << i)) != 0)
                 {
                     syncObject.OnDeserializeDelta(reader);
@@ -472,7 +469,7 @@ namespace Mirage
 
         internal void ResetSyncObjects()
         {
-            foreach (ISyncObject syncObject in syncObjects)
+            foreach (var syncObject in syncObjects)
             {
                 syncObject.Reset();
             }
@@ -483,11 +480,17 @@ namespace Mirage
 
         // overriden by weaver
         protected internal virtual int GetRpcCount() => 0;
-        protected internal RemoteCallCollection remoteCallCollection;
+
+        /// <summary>
+        /// Collection that holds information about all RPC in this networkbehaviour (including derived classes)
+        /// <para>Can be used to get RPC name from its index</para>
+        /// <para>NOTE: Weaver uses this collection to add rpcs, If adding your own rpc do at your own risk</para>
+        /// </summary>
+        public readonly RemoteCallCollection RemoteCallCollection;
 
         public NetworkBehaviour()
         {
-            remoteCallCollection = new RemoteCallCollection(this);
+            RemoteCallCollection = new RemoteCallCollection(this);
         }
         #endregion
     }

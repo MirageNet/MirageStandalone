@@ -21,6 +21,39 @@ namespace Mirage
         ///     If true this syncvar hook will also fire on the server side.
         /// </summary>
         public bool invokeHookOnServer;
+
+        /// <summary>
+        /// What type of look Mirage should look for
+        /// </summary>
+        public SyncHookType hookType = SyncHookType.Automatic;
+    }
+
+    public enum SyncHookType
+    {
+        /// <summary>
+        /// Looks for hooks matching the signature, gives compile error if none or more than 1 is found
+        /// </summary>
+        Automatic = 0,
+
+        /// <summary>
+        /// Hook with signature <c>void hookName(T newValue)</c>
+        /// </summary>
+        MethodWith1Arg,
+
+        /// <summary>
+        /// Hook with signature <c>void hookName(T oldValue, T newValue)</c>
+        /// </summary>
+        MethodWith2Arg,
+
+        /// <summary>
+        /// Hook with signature <c>event Action{T} hookName;</c>
+        /// </summary>
+        EventWith1Arg,
+
+        /// <summary>
+        /// Hook with signature <c>event Action{T,T} hookName;</c>
+        /// </summary>
+        EventWith2Arg,
     }
 
     /// <summary>
@@ -152,7 +185,8 @@ namespace Mirage
     public sealed class FoldoutEventAttribute : PropertyAttribute { }
 
     /// <summary>
-    /// Draws UnityEvent as a foldout
+    /// Makes field readonly in inspector.
+    /// <para>This is useful for fields that are set by code, but are shown iin inpector for debuggiing</para>
     /// </summary>
     [AttributeUsage(AttributeTargets.Field)]
     public sealed class ReadOnlyInspectorAttribute : PropertyAttribute { }

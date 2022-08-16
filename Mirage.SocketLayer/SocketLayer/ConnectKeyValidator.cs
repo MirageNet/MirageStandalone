@@ -8,22 +8,22 @@ namespace Mirage.SocketLayer
     /// </summary>
     internal class ConnectKeyValidator
     {
-        readonly byte[] key;
+        private readonly byte[] _key;
         public readonly int KeyLength;
-        const int OFFSET = 2;
+        private const int OFFSET = 2;
 
         public ConnectKeyValidator(byte[] key)
         {
-            this.key = key;
+            _key = key;
             KeyLength = key.Length;
         }
 
-        static byte[] GetKeyBytes(string key)
+        private static byte[] GetKeyBytes(string key)
         {
             // default to mirage version
             if (string.IsNullOrEmpty(key))
             {
-                string version = typeof(ConnectKeyValidator).Assembly.GetName().Version.Major.ToString();
+                var version = typeof(ConnectKeyValidator).Assembly.GetName().Version.Major.ToString();
                 key = $"Mirage V{version}";
             }
 
@@ -35,10 +35,10 @@ namespace Mirage.SocketLayer
 
         public bool Validate(byte[] buffer)
         {
-            for (int i = 0; i < KeyLength; i++)
+            for (var i = 0; i < KeyLength; i++)
             {
-                byte keyByte = buffer[i + OFFSET];
-                if (keyByte != key[i])
+                var keyByte = buffer[i + OFFSET];
+                if (keyByte != _key[i])
                     return false;
             }
 
@@ -47,9 +47,9 @@ namespace Mirage.SocketLayer
 
         public void CopyTo(byte[] buffer)
         {
-            for (int i = 0; i < KeyLength; i++)
+            for (var i = 0; i < KeyLength; i++)
             {
-                buffer[i + OFFSET] = key[i];
+                buffer[i + OFFSET] = _key[i];
             }
         }
     }

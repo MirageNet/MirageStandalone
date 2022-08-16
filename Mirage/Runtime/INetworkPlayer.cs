@@ -49,6 +49,7 @@ namespace Mirage
     /// </summary>
     public interface IObjectOwner
     {
+        event Action<NetworkIdentity> OnIdentityChanged;
         NetworkIdentity Identity { get; set; }
         bool HasCharacter { get; }
         void RemoveOwnedObject(NetworkIdentity networkIdentity);
@@ -62,7 +63,9 @@ namespace Mirage
     /// </summary>
     public interface INetworkPlayer : IMessageSender, IVisibilityTracker, IObjectOwner, IAuthenticatedObject, ISceneLoader
     {
+        SocketLayer.IEndPoint Address { get; }
         SocketLayer.IConnection Connection { get; }
+
         void Disconnect();
         void MarkAsDisconnected();
     }

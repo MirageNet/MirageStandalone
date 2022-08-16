@@ -1,9 +1,12 @@
-#if !NETCOREAPP
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using Unity.CompilationPipeline.Common.Diagnostics;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
+
 
 namespace Mirage.Weaver
 {
@@ -13,15 +16,24 @@ namespace Mirage.Weaver
 
         public override ILPostProcessor GetInstance() => this;
 
+        private static void Log(string msg)
+        {
+            Console.WriteLine($"[MirageILPostProcessor] {msg}");
+        }
+
         public override ILPostProcessResult Process(ICompiledAssembly compiledAssembly)
         {
-            if (!WillProcess(compiledAssembly))
+            var willProcess = WillProcess(compiledAssembly);
+            var logText = willProcess ? "Processing" : "Skipping";
+            Log($"{logText} {compiledAssembly.Name}");
+            if (!willProcess)
                 return null;
 
-            var logger = new WeaverLogger();
+            var enableTrace = compiledAssembly.Defines.Contains("WEAVER_DEBUG_LOGS");
+            var logger = new WeaverLogger(enableTrace);
             var weaver = new Weaver(logger);
 
-            AssemblyDefinition assemblyDefinition = weaver.Weave(compiledAssembly);
+            var assemblyDefinition = weaver.Weave(compiledAssembly);
 
             // write
             var pe = new MemoryStream();
@@ -36,7 +48,39 @@ namespace Mirage.Weaver
 
             assemblyDefinition?.Write(pe, writerParameters);
 
-            return new ILPostProcessResult(new InMemoryAssembly(pe.ToArray(), pdb.ToArray()), logger.Diagnostics);
+            logText = assemblyDefinition != null ? "Success" : "Failed";
+            Log($"{logText} {compiledAssembly.Name}");
+            return new ILPostProcessResult(new InMemoryAssembly(pe.ToArray(), pdb.ToArray()), ProcessDiagnostics(logger, compiledAssembly));
+        }
+
+        private List<DiagnosticMessage> ProcessDiagnostics(WeaverLogger logger, ICompiledAssembly compiledAssembly)
+        {
+            var diag = logger.Diagnostics;
+            var errorCount = diag.Where(x => x.DiagnosticType == DiagnosticType.Error).Count();
+            if (errorCount > 0)
+            {
+                var defineMsg = ArrayMessage("Defines", compiledAssembly.Defines);
+                var refMsg = ArrayMessage("References", compiledAssembly.References);
+                var msg = $"Weaver Failed with {errorCount} errors on {compiledAssembly.Name}. See Editor log for full details.\n{defineMsg}\n{refMsg}";
+
+
+                // if fail
+                // insert debug info for weaver as first message,
+                diag.Insert(0, new DiagnosticMessage
+                {
+                    DiagnosticType = DiagnosticType.Error,
+                    MessageData = msg
+                });
+            }
+
+            return diag;
+
+            string ArrayMessage(string prefix, string[] array)
+            {
+                return array.Length == 0
+                    ? $"{prefix}:[]"
+                    : $"{prefix}:[\n  {string.Join("\n  ", array)}\n]";
+            }
         }
 
         /// <summary>
@@ -48,4 +92,3 @@ namespace Mirage.Weaver
             compiledAssembly.References.Any(filePath => Path.GetFileNameWithoutExtension(filePath) == RuntimeAssemblyName);
     }
 }
-#endif

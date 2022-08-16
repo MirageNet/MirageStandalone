@@ -68,7 +68,7 @@ namespace Mirage.Events
     [Serializable]
     public sealed class AddLateEvent : AddLateEventBase, IAddLateEvent
     {
-        [SerializeField] UnityEvent _event = new UnityEvent();
+        [SerializeField] private UnityEvent _event = new UnityEvent();
 
         protected override UnityEventBase baseEvent => _event;
 
@@ -107,17 +107,17 @@ namespace Mirage.Events
     public abstract class AddLateEvent<T0, TEvent> : AddLateEventBase, IAddLateEvent<T0>
         where TEvent : UnityEvent<T0>, new()
     {
-        [SerializeField] TEvent _event = new TEvent();
+        [SerializeField] private TEvent _event = new TEvent();
         protected override UnityEventBase baseEvent => _event;
 
-        T0 arg0;
+        private T0 _arg0;
 
         public void AddListener(UnityAction<T0> handler)
         {
             // invoke handler if event has been invoked atleast once
             if (hasInvoked)
             {
-                handler.Invoke(arg0);
+                handler.Invoke(_arg0);
             }
 
             // add handler to inner event so that it can be invoked again
@@ -133,7 +133,7 @@ namespace Mirage.Events
         {
             MarkInvoked();
 
-            this.arg0 = arg0;
+            _arg0 = arg0;
             _event.Invoke(arg0);
         }
     }
@@ -148,18 +148,18 @@ namespace Mirage.Events
     public abstract class AddLateEvent<T0, T1, TEvent> : AddLateEventBase, IAddLateEvent<T0, T1>
         where TEvent : UnityEvent<T0, T1>, new()
     {
-        [SerializeField] TEvent _event = new TEvent();
+        [SerializeField] private TEvent _event = new TEvent();
         protected override UnityEventBase baseEvent => _event;
 
-        T0 arg0;
-        T1 arg1;
+        private T0 _arg0;
+        private T1 _arg1;
 
         public void AddListener(UnityAction<T0, T1> handler)
         {
             // invoke handler if event has been invoked atleast once
             if (hasInvoked)
             {
-                handler.Invoke(arg0, arg1);
+                handler.Invoke(_arg0, _arg1);
             }
 
             // add handler to inner event so that it can be invoked again
@@ -175,8 +175,8 @@ namespace Mirage.Events
         {
             MarkInvoked();
 
-            this.arg0 = arg0;
-            this.arg1 = arg1;
+            _arg0 = arg0;
+            _arg1 = arg1;
             _event.Invoke(arg0, arg1);
         }
     }

@@ -7,10 +7,10 @@ namespace Mirage.Collections
 {
     public class SyncList<T> : IList<T>, IReadOnlyList<T>, ISyncObject
     {
-        readonly IList<T> objects;
-        readonly IEqualityComparer<T> comparer;
+        private readonly IList<T> _objects;
+        private readonly IEqualityComparer<T> _comparer;
 
-        public int Count => objects.Count;
+        public int Count => _objects.Count;
         public bool IsReadOnly { get; private set; }
 
         /// <summary>
@@ -52,21 +52,22 @@ namespace Mirage.Collections
             OP_SET
         }
 
-        struct Change
+        private struct Change
         {
-            internal Operation operation;
-            internal int index;
-            internal T item;
+            public Operation Operation;
+            public int Index;
+            public T Item;
         }
 
-        readonly List<Change> changes = new List<Change>();
+        private readonly List<Change> _changes = new List<Change>();
+
         // how many changes we need to ignore
         // this is needed because when we initialize the list,
         // we might later receive changes that have already been applied
         // so we need to skip them
-        int changesAhead;
+        private int _changesAhead;
 
-        internal int ChangeCount => changes.Count;
+        internal int ChangeCount => _changes.Count;
 
         public SyncList() : this(EqualityComparer<T>.Default)
         {
@@ -74,31 +75,31 @@ namespace Mirage.Collections
 
         public SyncList(IEqualityComparer<T> comparer)
         {
-            this.comparer = comparer ?? EqualityComparer<T>.Default;
-            objects = new List<T>();
+            _comparer = comparer ?? EqualityComparer<T>.Default;
+            _objects = new List<T>();
         }
 
         public SyncList(IList<T> objects, IEqualityComparer<T> comparer = null)
         {
-            this.comparer = comparer ?? EqualityComparer<T>.Default;
-            this.objects = objects;
+            _comparer = comparer ?? EqualityComparer<T>.Default;
+            _objects = objects;
         }
 
-        public bool IsDirty => changes.Count > 0;
+        public bool IsDirty => _changes.Count > 0;
 
         // throw away all the changes
         // this should be called after a successfull sync
-        public void Flush() => changes.Clear();
+        public void Flush() => _changes.Clear();
 
         public void Reset()
         {
             IsReadOnly = false;
-            changes.Clear();
-            changesAhead = 0;
-            objects.Clear();
+            _changes.Clear();
+            _changesAhead = 0;
+            _objects.Clear();
         }
 
-        void AddOperation(Operation op, int itemIndex, T newItem)
+        private void AddOperation(Operation op, int itemIndex, T newItem)
         {
             if (IsReadOnly)
             {
@@ -107,23 +108,23 @@ namespace Mirage.Collections
 
             var change = new Change
             {
-                operation = op,
-                index = itemIndex,
-                item = newItem
+                Operation = op,
+                Index = itemIndex,
+                Item = newItem
             };
 
-            changes.Add(change);
+            _changes.Add(change);
             OnChange?.Invoke();
         }
 
         public void OnSerializeAll(NetworkWriter writer)
         {
             // if init,  write the full list content
-            writer.WritePackedUInt32((uint)objects.Count);
+            writer.WritePackedUInt32((uint)_objects.Count);
 
-            for (int i = 0; i < objects.Count; i++)
+            for (var i = 0; i < _objects.Count; i++)
             {
-                T obj = objects[i];
+                var obj = _objects[i];
                 writer.Write(obj);
             }
 
@@ -131,36 +132,36 @@ namespace Mirage.Collections
             // thus the client will need to skip all the pending changes
             // or they would be applied again.
             // So we write how many changes are pending
-            writer.WritePackedUInt32((uint)changes.Count);
+            writer.WritePackedUInt32((uint)_changes.Count);
         }
 
         public void OnSerializeDelta(NetworkWriter writer)
         {
             // write all the queued up changes
-            writer.WritePackedUInt32((uint)changes.Count);
+            writer.WritePackedUInt32((uint)_changes.Count);
 
-            for (int i = 0; i < changes.Count; i++)
+            for (var i = 0; i < _changes.Count; i++)
             {
-                Change change = changes[i];
-                writer.WriteByte((byte)change.operation);
+                var change = _changes[i];
+                writer.WriteByte((byte)change.Operation);
 
-                switch (change.operation)
+                switch (change.Operation)
                 {
                     case Operation.OP_ADD:
-                        writer.Write(change.item);
+                        writer.Write(change.Item);
                         break;
 
                     case Operation.OP_CLEAR:
                         break;
 
                     case Operation.OP_REMOVEAT:
-                        writer.WritePackedUInt32((uint)change.index);
+                        writer.WritePackedUInt32((uint)change.Index);
                         break;
 
                     case Operation.OP_INSERT:
                     case Operation.OP_SET:
-                        writer.WritePackedUInt32((uint)change.index);
-                        writer.Write(change.item);
+                        writer.WritePackedUInt32((uint)change.Index);
+                        writer.Write(change.Item);
                         break;
                 }
             }
@@ -172,23 +173,23 @@ namespace Mirage.Collections
             IsReadOnly = true;
 
             // if init,  write the full list content
-            int count = (int)reader.ReadPackedUInt32();
+            var count = (int)reader.ReadPackedUInt32();
 
-            objects.Clear();
+            _objects.Clear();
             OnClear?.Invoke();
-            changes.Clear();
+            _changes.Clear();
 
-            for (int i = 0; i < count; i++)
+            for (var i = 0; i < count; i++)
             {
-                T obj = reader.Read<T>();
-                objects.Add(obj);
+                var obj = reader.Read<T>();
+                _objects.Add(obj);
                 OnInsert?.Invoke(i, obj);
             }
 
             // We will need to skip all these changes
             // the next time the list is synchronized
             // because they have already been applied
-            changesAhead = (int)reader.ReadPackedUInt32();
+            _changesAhead = (int)reader.ReadPackedUInt32();
 
             OnChange?.Invoke();
         }
@@ -197,17 +198,17 @@ namespace Mirage.Collections
         {
             // This list can now only be modified by synchronization
             IsReadOnly = true;
-            bool raiseOnChange = false;
+            var raiseOnChange = false;
 
-            int changesCount = (int)reader.ReadPackedUInt32();
+            var changesCount = (int)reader.ReadPackedUInt32();
 
-            for (int i = 0; i < changesCount; i++)
+            for (var i = 0; i < changesCount; i++)
             {
                 var operation = (Operation)reader.ReadByte();
 
                 // apply the operation only if it is a new change
                 // that we have not applied yet
-                bool apply = changesAhead == 0;
+                var apply = _changesAhead == 0;
 
                 switch (operation)
                 {
@@ -239,7 +240,7 @@ namespace Mirage.Collections
                 // we just skipped this change
                 else
                 {
-                    changesAhead--;
+                    _changesAhead--;
                 }
             }
 
@@ -249,68 +250,67 @@ namespace Mirage.Collections
 
         private void DeserializeAdd(NetworkReader reader, bool apply)
         {
-            T newItem = reader.Read<T>();
+            var newItem = reader.Read<T>();
             if (apply)
             {
-                objects.Add(newItem);
-                OnInsert?.Invoke(objects.Count - 1, newItem);
+                _objects.Add(newItem);
+                OnInsert?.Invoke(_objects.Count - 1, newItem);
             }
-
         }
 
         private void DeserializeClear(bool apply)
         {
             if (apply)
             {
-                objects.Clear();
+                _objects.Clear();
                 OnClear?.Invoke();
             }
         }
 
         private void DeserializeInsert(NetworkReader reader, bool apply)
         {
-            int index = (int)reader.ReadPackedUInt32();
-            T newItem = reader.Read<T>();
+            var index = (int)reader.ReadPackedUInt32();
+            var newItem = reader.Read<T>();
             if (apply)
             {
-                objects.Insert(index, newItem);
+                _objects.Insert(index, newItem);
                 OnInsert?.Invoke(index, newItem);
             }
         }
 
         private void DeserializeRemoveAt(NetworkReader reader, bool apply)
         {
-            int index = (int)reader.ReadPackedUInt32();
+            var index = (int)reader.ReadPackedUInt32();
             if (apply)
             {
-                T oldItem = objects[index];
-                objects.RemoveAt(index);
+                var oldItem = _objects[index];
+                _objects.RemoveAt(index);
                 OnRemove?.Invoke(index, oldItem);
             }
         }
 
         private void DeserializeSet(NetworkReader reader, bool apply)
         {
-            int index = (int)reader.ReadPackedUInt32();
-            T newItem = reader.Read<T>();
+            var index = (int)reader.ReadPackedUInt32();
+            var newItem = reader.Read<T>();
             if (apply)
             {
-                T oldItem = objects[index];
-                objects[index] = newItem;
+                var oldItem = _objects[index];
+                _objects[index] = newItem;
                 OnSet?.Invoke(index, oldItem, newItem);
             }
         }
 
         public void Add(T item)
         {
-            objects.Add(item);
-            OnInsert?.Invoke(objects.Count - 1, item);
-            AddOperation(Operation.OP_ADD, objects.Count - 1, item);
+            _objects.Add(item);
+            OnInsert?.Invoke(_objects.Count - 1, item);
+            AddOperation(Operation.OP_ADD, _objects.Count - 1, item);
         }
 
         public void AddRange(IEnumerable<T> range)
         {
-            foreach (T entry in range)
+            foreach (var entry in range)
             {
                 Add(entry);
             }
@@ -318,56 +318,65 @@ namespace Mirage.Collections
 
         public void Clear()
         {
-            objects.Clear();
+            _objects.Clear();
             OnClear?.Invoke();
             AddOperation(Operation.OP_CLEAR, 0, default);
         }
 
         public bool Contains(T item) => IndexOf(item) >= 0;
 
-        public void CopyTo(T[] array, int arrayIndex) => objects.CopyTo(array, arrayIndex);
+        public void CopyTo(T[] array, int arrayIndex) => _objects.CopyTo(array, arrayIndex);
 
         public int IndexOf(T item)
         {
-            for (int i = 0; i < objects.Count; ++i)
-                if (comparer.Equals(item, objects[i]))
+            for (var i = 0; i < _objects.Count; ++i)
+            {
+                if (_comparer.Equals(item, _objects[i]))
                     return i;
+            }
+
             return -1;
         }
 
         public int FindIndex(Predicate<T> match)
         {
-            for (int i = 0; i < objects.Count; ++i)
-                if (match(objects[i]))
+            for (var i = 0; i < _objects.Count; ++i)
+            {
+                if (match(_objects[i]))
                     return i;
+            }
+
             return -1;
         }
 
         public T Find(Predicate<T> match)
         {
-            int i = FindIndex(match);
-            return (i != -1) ? objects[i] : default;
+            var i = FindIndex(match);
+            return (i != -1) ? _objects[i] : default;
         }
 
         public List<T> FindAll(Predicate<T> match)
         {
             var results = new List<T>();
-            for (int i = 0; i < objects.Count; ++i)
-                if (match(objects[i]))
-                    results.Add(objects[i]);
+            for (var i = 0; i < _objects.Count; ++i)
+            {
+                if (match(_objects[i]))
+                    results.Add(_objects[i]);
+            }
+
             return results;
         }
 
         public void Insert(int index, T item)
         {
-            objects.Insert(index, item);
+            _objects.Insert(index, item);
             OnInsert?.Invoke(index, item);
             AddOperation(Operation.OP_INSERT, index, item);
         }
 
         public void InsertRange(int index, IEnumerable<T> range)
         {
-            foreach (T entry in range)
+            foreach (var entry in range)
             {
                 Insert(index, entry);
                 index++;
@@ -376,8 +385,8 @@ namespace Mirage.Collections
 
         public bool Remove(T item)
         {
-            int index = IndexOf(item);
-            bool result = index >= 0;
+            var index = IndexOf(item);
+            var result = index >= 0;
             if (result)
             {
                 RemoveAt(index);
@@ -387,8 +396,8 @@ namespace Mirage.Collections
 
         public void RemoveAt(int index)
         {
-            T oldItem = objects[index];
-            objects.RemoveAt(index);
+            var oldItem = _objects[index];
+            _objects.RemoveAt(index);
             OnRemove?.Invoke(index, oldItem);
             AddOperation(Operation.OP_REMOVEAT, index, default);
         }
@@ -396,11 +405,13 @@ namespace Mirage.Collections
         public int RemoveAll(Predicate<T> match)
         {
             var toRemove = new List<T>();
-            for (int i = 0; i < objects.Count; ++i)
-                if (match(objects[i]))
-                    toRemove.Add(objects[i]);
+            for (var i = 0; i < _objects.Count; ++i)
+            {
+                if (match(_objects[i]))
+                    toRemove.Add(_objects[i]);
+            }
 
-            foreach (T entry in toRemove)
+            foreach (var entry in toRemove)
             {
                 Remove(entry);
             }
@@ -410,13 +421,13 @@ namespace Mirage.Collections
 
         public T this[int i]
         {
-            get => objects[i];
+            get => _objects[i];
             set
             {
-                if (!comparer.Equals(objects[i], value))
+                if (!_comparer.Equals(_objects[i], value))
                 {
-                    T oldItem = objects[i];
-                    objects[i] = value;
+                    var oldItem = _objects[i];
+                    _objects[i] = value;
                     OnSet?.Invoke(i, oldItem, value);
                     AddOperation(Operation.OP_SET, i, value);
                 }
@@ -441,28 +452,28 @@ namespace Mirage.Collections
         // => this is extremely important for MMO scale networking
         public struct Enumerator : IEnumerator<T>
         {
-            readonly SyncList<T> list;
-            int index;
+            private readonly SyncList<T> _list;
+            private int _index;
             public T Current { get; private set; }
 
             public Enumerator(SyncList<T> list)
             {
-                this.list = list;
-                index = -1;
+                _list = list;
+                _index = -1;
                 Current = default;
             }
 
             public bool MoveNext()
             {
-                if (++index >= list.Count)
+                if (++_index >= _list.Count)
                 {
                     return false;
                 }
-                Current = list[index];
+                Current = _list[_index];
                 return true;
             }
 
-            public void Reset() => index = -1;
+            public void Reset() => _index = -1;
             object IEnumerator.Current => Current;
             public void Dispose()
             {

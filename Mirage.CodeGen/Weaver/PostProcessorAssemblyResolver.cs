@@ -8,7 +8,9 @@ using Unity.CompilationPipeline.Common.ILPostProcessing;
 
 namespace Mirage.Weaver
 {
-    class PostProcessorAssemblyResolver : IAssemblyResolver
+    // original code under MIT Copyright (c) 2021 Unity Technologies
+    // https://github.com/Unity-Technologies/com.unity.netcode.gameobjects/blob/472d51b34520e8fb6f0aa43fd56d162c3029e0b0/com.unity.netcode.gameobjects/Editor/CodeGen/PostProcessorAssemblyResolver.cs
+    internal class PostProcessorAssemblyResolver : IAssemblyResolver
     {
         private readonly string[] _assemblyReferences;
         private readonly string[] _assemblyReferencesFileName;
@@ -45,22 +47,22 @@ namespace Mirage.Weaver
                 if (name.Name == _compiledAssembly.Name)
                     return _selfAssembly;
 
-                string fileName = FindFile(name);
+                var fileName = FindFile(name);
                 if (fileName == null)
                     return null;
 
-                DateTime lastWriteTime = File.GetLastWriteTime(fileName);
+                var lastWriteTime = File.GetLastWriteTime(fileName);
 
-                string cacheKey = fileName + lastWriteTime;
+                var cacheKey = fileName + lastWriteTime;
 
-                if (_assemblyCache.TryGetValue(cacheKey, out AssemblyDefinition result))
+                if (_assemblyCache.TryGetValue(cacheKey, out var result))
                     return result;
 
                 parameters.AssemblyResolver = this;
 
-                MemoryStream ms = MemoryStreamFor(fileName);
+                var ms = MemoryStreamFor(fileName);
 
-                string pdb = fileName + ".pdb";
+                var pdb = fileName + ".pdb";
                 if (File.Exists(pdb))
                     parameters.SymbolStream = MemoryStreamFor(pdb);
 
@@ -75,12 +77,12 @@ namespace Mirage.Weaver
             // This method is called a lot, avoid linq
 
             // first pass, check if we can find dll or exe file
-            string dllName = name.Name + ".dll";
-            string exeName = name.Name + ".exe";
-            for (int i = 0; i < _assemblyReferencesFileName.Length; i++)
+            var dllName = name.Name + ".dll";
+            var exeName = name.Name + ".exe";
+            for (var i = 0; i < _assemblyReferencesFileName.Length; i++)
             {
                 // if filename matches, return full path
-                string fileName = _assemblyReferencesFileName[i];
+                var fileName = _assemblyReferencesFileName[i];
                 if (fileName == dllName || fileName == exeName)
                     return _assemblyReferences[i];
             }
@@ -94,10 +96,10 @@ namespace Mirage.Weaver
             //in the ILPostProcessing API. As a workaround, we rely on the fact here that the indirect references
             //are always located next to direct references, so we search in all directories of direct references we
             //got passed, and if we find the file in there, we resolve to it.
-            IEnumerable<string> allParentDirectories = _assemblyReferences.Select(Path.GetDirectoryName).Distinct();
-            foreach (string parentDir in allParentDirectories)
+            var allParentDirectories = _assemblyReferences.Select(Path.GetDirectoryName).Distinct();
+            foreach (var parentDir in allParentDirectories)
             {
-                string candidate = Path.Combine(parentDir, name.Name + ".dll");
+                var candidate = Path.Combine(parentDir, name.Name + ".dll");
                 if (File.Exists(candidate))
                     return candidate;
             }
@@ -105,7 +107,7 @@ namespace Mirage.Weaver
             return null;
         }
 
-        static MemoryStream MemoryStreamFor(string fileName)
+        private static MemoryStream MemoryStreamFor(string fileName)
         {
             return Retry(10, TimeSpan.FromSeconds(1), () =>
             {
@@ -113,7 +115,7 @@ namespace Mirage.Weaver
                 using (var fs = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 {
                     byteArray = new byte[fs.Length];
-                    int readLength = fs.Read(byteArray, 0, (int)fs.Length);
+                    var readLength = fs.Read(byteArray, 0, (int)fs.Length);
                     if (readLength != fs.Length)
                         throw new InvalidOperationException("File read length is not full length of file.");
                 }
