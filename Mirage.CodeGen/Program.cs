@@ -15,16 +15,16 @@ namespace Mirage.Weaver
             try
             {
                 Console.WriteLine("Mirage Weaver start");
-                string dllPath = args[0];
-                byte[] data = File.ReadAllBytes(dllPath);
+                var dllPath = args[0];
+                var data = File.ReadAllBytes(dllPath);
                 var asm = Assembly.Load(data);
 
                 // TODO: use proper Assembly paths 
-                string[] references = asm.GetReferencedAssemblies().Select(a => Path.Combine(Path.GetDirectoryName(dllPath), a.Name)).ToArray();
+                var references = asm.GetReferencedAssemblies().Select(a => Path.Combine(Path.GetDirectoryName(dllPath), a.Name)).ToArray();
                 var compiledAssembly = new CompiledAssembly(dllPath, references, new string[0]);
-                var weaverLogger = new WeaverLogger();
+                var weaverLogger = new WeaverLogger(false);
                 var weaver = new Weaver(weaverLogger);
-                AssemblyDefinition assemblyDefinition = weaver.Weave(compiledAssembly);
+                var assemblyDefinition = weaver.Weave(compiledAssembly);
                 Write(assemblyDefinition, dllPath, compiledAssembly.PdbPath);
 
                 Environment.ExitCode = 0;
@@ -62,8 +62,8 @@ namespace Mirage.Weaver
         {
             Name = Path.GetFileName(dllPath);
             PdbPath = $"{Path.GetDirectoryName(dllPath)}/{Path.GetFileNameWithoutExtension(dllPath)}.pdb";
-            byte[] peData = File.ReadAllBytes(dllPath);
-            byte[] pdbData = File.ReadAllBytes(PdbPath);
+            var peData = File.ReadAllBytes(dllPath);
+            var pdbData = File.ReadAllBytes(PdbPath);
             InMemoryAssembly = new InMemoryAssembly(peData, pdbData);
             References = references;
             Defines = defines;

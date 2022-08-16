@@ -43,3 +43,9 @@ namespace UnityEngine.Serialization
     [AttributeUsage(AttributeTargets.Field, AllowMultiple = true)]
     public class FormerlySerializedAsAttribute : Attribute { public FormerlySerializedAsAttribute(string _) { } }
 }
+
+namespace UnityEditor
+{
+    [AttributeUsage(AttributeTargets.Method)]
+    public class InitializeOnLoadMethodAttribute : Attribute { }
+}

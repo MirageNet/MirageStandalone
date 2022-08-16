@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Threading;
+using System.Threading.Tasks;
 using Mirage.Standalone;
 
 namespace Mirage.Examples
@@ -20,16 +20,22 @@ namespace Mirage.Examples
         public HeadlessPerformance(string[] args)
         {
             arguments = new List<string>(args);
-            runner = new StandaloneRunner();
+            runner = new StandaloneRunner(5);
 
             ParsePort();
             ParseForServerMode();
             StartClients();
+
+        }
+
+        public void Stop()
+        {
+            runner.Stop();
         }
 
         private void ParsePort()
         {
-            string portString = GetArgValue("-port");
+            var portString = GetArgValue("-port");
             if (string.IsNullOrEmpty(portString))
             {
                 port = 7777;
@@ -60,11 +66,11 @@ namespace Mirage.Examples
             Console.WriteLine("Starting Server Only Mode");
         }
 
-        private void StartClients()
+        private async Task StartClients()
         {
             if (!HasArg("-client")) return;
 
-            string address = GetArgValue("-address");
+            var address = GetArgValue("-address");
 
             if (string.IsNullOrEmpty(address))
             {
@@ -72,8 +78,8 @@ namespace Mirage.Examples
             }
 
             //nested clients
-            int clonesCount = 1;
-            string clonesString = GetArgValue("-client");
+            var clonesCount = 1;
+            var clonesString = GetArgValue("-client");
             if (!string.IsNullOrEmpty(clonesString))
             {
                 clonesCount = int.Parse(clonesString);
@@ -82,11 +88,11 @@ namespace Mirage.Examples
             Console.WriteLine("Starting {0} clients", clonesCount);
 
             // connect from a bunch of clients
-            for (int i = 0; i < clonesCount; i++)
+            for (var i = 0; i < clonesCount; i++)
             {
                 StartClient(i, address);
 
-                Thread.Sleep(5);
+                await Task.Delay(5);
 
                 Console.WriteLine("Started {0} clients", i + 1);
             }
@@ -94,7 +100,7 @@ namespace Mirage.Examples
 
         void StartClient(int i, string networkAddress)
         {
-            NetworkClient client = runner.AddClient();
+            var client = runner.AddClient();
 
             /* TODO Fix this.
             objectManager.RegisterPrefab(MonsterPrefab.GetComponent<NetworkIdentity>());
@@ -111,7 +117,7 @@ namespace Mirage.Examples
 
         private string GetArgValue(string name)
         {
-            int index = arguments.IndexOf(name);
+            var index = arguments.IndexOf(name);
             if (index == -1 || index + 1 == arguments.Count) return null;
 
             return arguments[index + 1];
