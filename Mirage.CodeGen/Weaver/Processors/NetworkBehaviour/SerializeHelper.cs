@@ -10,11 +10,9 @@ namespace Mirage.Weaver.NetworkBehaviours
     internal class SerializeHelper
     {
         public const string MethodName = nameof(NetworkBehaviour.SerializeSyncVars);
-
-        readonly ModuleDefinition module;
-        readonly FoundNetworkBehaviour behaviour;
-
-        ILProcessor worker;
+        private readonly ModuleDefinition module;
+        private readonly FoundNetworkBehaviour behaviour;
+        private ILProcessor worker;
 
         public MethodDefinition Method { get; private set; }
         public ParameterDefinition WriterParameter { get; private set; }
@@ -60,7 +58,7 @@ namespace Mirage.Weaver.NetworkBehaviours
         {
             // dirty = base.Serialize(...)
 
-            MethodReference baseSerialize = behaviour.TypeDefinition.BaseType.GetMethodInBaseType(MethodName);
+            var baseSerialize = behaviour.TypeDefinition.BaseType.GetMethodInBaseType(MethodName);
             if (baseSerialize != null)
             {
                 // base
@@ -78,7 +76,7 @@ namespace Mirage.Weaver.NetworkBehaviours
         public void WriteIfInitial(Action Body)
         {
             // Generates: if (initial)
-            Instruction endIfLabel = worker.Create(OpCodes.Nop);
+            var endIfLabel = worker.Create(OpCodes.Nop);
             // initial
             worker.Append(worker.Create(OpCodes.Ldarg, InitializeParameter));
             worker.Append(worker.Create(OpCodes.Brfalse, endIfLabel));
@@ -101,7 +99,7 @@ namespace Mirage.Weaver.NetworkBehaviours
         /// </summary>
         public void WriteDirtyBitMask()
         {
-            MethodReference writeBitsMethod = module.ImportReference(WriterParameter.ParameterType.Resolve().GetMethod(nameof(NetworkWriter.Write)));
+            var writeBitsMethod = module.ImportReference(WriterParameter.ParameterType.Resolve().GetMethod(nameof(NetworkWriter.Write)));
 
             // Generates: writer.Write(dirtyBits >> b, n)
             // where b is syncvars in base, n is syncvars in this
@@ -112,7 +110,7 @@ namespace Mirage.Weaver.NetworkBehaviours
             worker.Append(worker.Create(OpCodes.Ldloc, DirtyBitsLocal));
 
             // shift if there are syncvars in base class
-            int syncVarInBase = behaviour.syncVarCounter.GetInBase();
+            var syncVarInBase = behaviour.syncVarCounter.GetInBase();
             if (syncVarInBase > 0)
             {
                 // load inBaseCount
@@ -135,7 +133,7 @@ namespace Mirage.Weaver.NetworkBehaviours
         /// <param name="falseLabel"></param>
         public void WriteIfSyncVarDirty(FoundSyncVar syncvar, Action Body)
         {
-            Instruction endIfLabel = worker.Create(OpCodes.Nop);
+            var endIfLabel = worker.Create(OpCodes.Nop);
             // load dirtyBit
             // load syncvarIndex
             // AND operation

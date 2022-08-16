@@ -10,11 +10,9 @@ namespace Mirage.Weaver.NetworkBehaviours
     internal class DeserializeHelper
     {
         public const string MethodName = nameof(NetworkBehaviour.DeserializeSyncVars);
-
-        readonly ModuleDefinition module;
-        readonly FoundNetworkBehaviour behaviour;
-
-        ILProcessor worker;
+        private readonly ModuleDefinition module;
+        private readonly FoundNetworkBehaviour behaviour;
+        private ILProcessor worker;
 
         public MethodDefinition Method { get; private set; }
         public ParameterDefinition ReaderParameter { get; private set; }
@@ -54,7 +52,7 @@ namespace Mirage.Weaver.NetworkBehaviours
 
         public void WriteBaseCall()
         {
-            MethodReference baseDeserialize = behaviour.TypeDefinition.BaseType.GetMethodInBaseType(MethodName);
+            var baseDeserialize = behaviour.TypeDefinition.BaseType.GetMethodInBaseType(MethodName);
             if (baseDeserialize != null)
             {
                 // base
@@ -70,7 +68,7 @@ namespace Mirage.Weaver.NetworkBehaviours
         public void WriteIfInitial(Action body)
         {
             // Generates: if (initial)
-            Instruction initialStateLabel = worker.Create(OpCodes.Nop);
+            var initialStateLabel = worker.Create(OpCodes.Nop);
 
             worker.Append(worker.Create(OpCodes.Ldarg, InitializeParameter));
             worker.Append(worker.Create(OpCodes.Brfalse, initialStateLabel));
@@ -89,7 +87,7 @@ namespace Mirage.Weaver.NetworkBehaviours
         /// </summary>
         public void ReadDirtyBitMask()
         {
-            MethodReference readBitsMethod = module.ImportReference(ReaderParameter.ParameterType.Resolve().GetMethod(nameof(NetworkReader.Read)));
+            var readBitsMethod = module.ImportReference(ReaderParameter.ParameterType.Resolve().GetMethod(nameof(NetworkReader.Read)));
 
             // Generates: reader.Read(n)
             // n is syncvars in this
@@ -103,10 +101,10 @@ namespace Mirage.Weaver.NetworkBehaviours
 
         internal void WriteIfSyncVarDirty(FoundSyncVar syncVar, Action body)
         {
-            Instruction endIf = worker.Create(OpCodes.Nop);
+            var endIf = worker.Create(OpCodes.Nop);
 
             // we dont shift read bits, so we have to shift dirty bit here
-            long syncVarIndex = syncVar.DirtyBit >> behaviour.syncVarCounter.GetInBase();
+            var syncVarIndex = syncVar.DirtyBit >> behaviour.syncVarCounter.GetInBase();
 
             // check if dirty bit is set
             worker.Append(worker.Create(OpCodes.Ldloc, DirtyBitsLocal));

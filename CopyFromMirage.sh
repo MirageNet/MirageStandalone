@@ -17,10 +17,13 @@ CopyScripts "$MiragePath/Assets/Mirage/Runtime/Collections" "./Mirage/Runtime/Co
 CopyScripts "$MiragePath/Assets/Mirage/Runtime/Events" "./Mirage/Runtime/Events"
 CopyScripts "$MiragePath/Assets/Mirage/Runtime/RemoteCalls" "./Mirage/Runtime/RemoteCalls"
 CopyScripts "$MiragePath/Assets/Mirage/Runtime/Serialization" "./Mirage/Runtime/Serialization"
+CopyScripts "$MiragePath/Assets/Mirage/Runtime/Serialization/Packers" "./Mirage/Runtime/Serialization/Packers"
 
 CopyScripts "$MiragePath/Assets/Mirage/Weaver" "./Mirage.CodeGen/Weaver"
 rm "./Mirage.CodeGen/Weaver/MirageILPostProcessor.cs"
 CopyScripts "$MiragePath/Assets/Mirage/Weaver/Processors" "./Mirage.CodeGen/Weaver/Processors"
+CopyScripts "$MiragePath/Assets/Mirage/Weaver/Processors/NetworkBehaviour" "./Mirage.CodeGen/Weaver/Processors/NetworkBehaviour"
+CopyScripts "$MiragePath/Assets/Mirage/Weaver/Processors/SyncVars" "./Mirage.CodeGen/Weaver/Processors/SyncVars"
 CopyScripts "$MiragePath/Assets/Mirage/Weaver/Serialization" "./Mirage.CodeGen/Weaver/Serialization"
 
 cp "$MiragePath/Assets/Mirage/Runtime/Logging/LogFactory.cs" "./Mirage.Logging/Logging/"

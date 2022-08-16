@@ -38,12 +38,12 @@ namespace Mirage.Serialization
         /// <summary>
         /// 1 / sqrt(2)
         /// </summary>
-        const float MaxValue = 1f / 1.414214f;
+        private const float MAX_VALUE = 1f / 1.414214f;
 
         /// <summary>
         /// bit count per element writen
         /// </summary>
-        readonly int bitCountPerElement;
+        private readonly int _bitCountPerElement;
 
         /// <summary>
         /// total bit count for Quaternion
@@ -51,33 +51,32 @@ namespace Mirage.Serialization
         /// count = 3 * perElement + 2;
         /// </para>
         /// </summary>
-        readonly int totalBitCount;
-        readonly uint readMask;
-
-        readonly FloatPacker floatPacker;
+        private readonly int _totalBitCount;
+        private readonly uint _readMask;
+        private readonly FloatPacker _floatPacker;
 
         /// <param name="quaternionBitLength">10 per "smallest 3" is good enough for most people</param>
         public QuaternionPacker(int quaternionBitLength = 10)
         {
             // (this.BitLength - 1) because pack sign by itself
-            bitCountPerElement = quaternionBitLength;
-            totalBitCount = 2 + (quaternionBitLength * 3);
-            floatPacker = new FloatPacker(MaxValue, quaternionBitLength);
-            readMask = (uint)BitMask.Mask(bitCountPerElement);
+            _bitCountPerElement = quaternionBitLength;
+            _totalBitCount = 2 + (quaternionBitLength * 3);
+            _floatPacker = new FloatPacker(MAX_VALUE, quaternionBitLength);
+            _readMask = (uint)BitMask.Mask(_bitCountPerElement);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Pack(NetworkWriter writer, Quaternion _value)
+        public void Pack(NetworkWriter writer, Quaternion value)
         {
-            QuickNormalize(ref _value);
+            QuickNormalize(ref value);
 
-            FindLargestIndex(ref _value, out uint index);
+            FindLargestIndex(ref value, out var index);
 
-            GetSmallerDimensions(index, ref _value, out float a, out float b, out float c);
+            GetSmallerDimensions(index, ref value, out var a, out var b, out var c);
 
             // largest needs to be positive to be calculated by reader 
             // if largest is negative flip sign of others because Q = -Q
-            if (_value[(int)index] < 0)
+            if (value[(int)index] < 0)
             {
                 a = -a;
                 b = -b;
@@ -87,17 +86,17 @@ namespace Mirage.Serialization
             // todo, should we be rounding down for abc? because if they are rounded up their sum may be greater than largest
 
             writer.Write(
-                 (ulong)index << bitCountPerElement * 3 |
-                 (ulong)floatPacker.PackNoClamp(a) << bitCountPerElement * 2 |
-                 (ulong)floatPacker.PackNoClamp(b) << bitCountPerElement |
-                 floatPacker.PackNoClamp(c),
-                 totalBitCount);
+                 ((ulong)index << (_bitCountPerElement * 3)) |
+                 ((ulong)_floatPacker.PackNoClamp(a) << (_bitCountPerElement * 2)) |
+                 ((ulong)_floatPacker.PackNoClamp(b) << _bitCountPerElement) |
+                 _floatPacker.PackNoClamp(c),
+                 _totalBitCount);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void QuickNormalize(ref Quaternion quaternion)
         {
-            float dot =
+            var dot =
                 (quaternion.x * quaternion.x) +
                 (quaternion.y * quaternion.y) +
                 (quaternion.z * quaternion.z) +
@@ -109,7 +108,7 @@ namespace Mirage.Serialization
             // only normalize if dot product is outside allowed range
             if (minAllowed > dot || maxAllowed < dot)
             {
-                float dotSqrt = (float)Math.Sqrt(dot);
+                var dotSqrt = (float)Math.Sqrt(dot);
                 // rotation is 0
                 if (dotSqrt < allowedEpsilon)
                 {
@@ -121,7 +120,7 @@ namespace Mirage.Serialization
                 }
                 else
                 {
-                    float iDotSqrt = 1 / dotSqrt;
+                    var iDotSqrt = 1 / dotSqrt;
                     quaternion.x *= iDotSqrt;
                     quaternion.y *= iDotSqrt;
                     quaternion.z *= iDotSqrt;
@@ -133,13 +132,13 @@ namespace Mirage.Serialization
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void FindLargestIndex(ref Quaternion quaternion, out uint index)
         {
-            float x2 = quaternion.x * quaternion.x;
-            float y2 = quaternion.y * quaternion.y;
-            float z2 = quaternion.z * quaternion.z;
-            float w2 = quaternion.w * quaternion.w;
+            var x2 = quaternion.x * quaternion.x;
+            var y2 = quaternion.y * quaternion.y;
+            var z2 = quaternion.z * quaternion.z;
+            var w2 = quaternion.w * quaternion.w;
 
             index = 0;
-            float current = x2;
+            var current = x2;
             // check vs sq to avoid doing mathf.abs
             if (y2 > current)
             {
@@ -158,7 +157,7 @@ namespace Mirage.Serialization
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static void GetSmallerDimensions(uint largestIndex, ref Quaternion quaternion, out float a, out float b, out float c)
+        private static void GetSmallerDimensions(uint largestIndex, ref Quaternion quaternion, out float a, out float b, out float c)
         {
             switch (largestIndex)
             {
@@ -188,22 +187,23 @@ namespace Mirage.Serialization
                     return;
             }
         }
-        static void ThrowIfOutOfRange() => throw new IndexOutOfRangeException("Invalid Quaternion index!");
+
+        private static void ThrowIfOutOfRange() => throw new IndexOutOfRangeException("Invalid Quaternion index!");
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Quaternion Unpack(NetworkReader reader)
         {
-            ulong combine = reader.Read(totalBitCount);
+            var combine = reader.Read(_totalBitCount);
 
-            uint index = (uint)(combine >> bitCountPerElement * 3);
+            var index = (uint)(combine >> (_bitCountPerElement * 3));
 
-            float a = floatPacker.Unpack((uint)(combine >> bitCountPerElement * 2) & readMask);
-            float b = floatPacker.Unpack((uint)(combine >> bitCountPerElement * 1) & readMask);
-            float c = floatPacker.Unpack((uint)combine & readMask);
+            var a = _floatPacker.Unpack((uint)(combine >> (_bitCountPerElement * 2)) & _readMask);
+            var b = _floatPacker.Unpack((uint)(combine >> (_bitCountPerElement * 1)) & _readMask);
+            var c = _floatPacker.Unpack((uint)combine & _readMask);
 
-            float l2 = 1 - ((a * a) + (b * b) + (c * c));
-            float largest = (float)Math.Sqrt(l2);
+            var l2 = 1 - ((a * a) + (b * b) + (c * c));
+            var largest = (float)Math.Sqrt(l2);
             // this Quaternion should already be normallized because of the way that largest is calculated
             switch (index)
             {

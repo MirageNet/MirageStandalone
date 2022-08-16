@@ -31,30 +31,29 @@ namespace Mirage.Serialization
     /// </summary>
     public sealed class VarFloatPacker
     {
-        readonly int blockSize;
-        readonly float precision;
-        readonly float inversePrecision;
+        private readonly int _blockSize;
+        private readonly float _precision;
+        private readonly float _inversePrecision;
 
         public VarFloatPacker(float precision, int blockSize)
         {
-            this.precision = precision;
-            this.blockSize = blockSize;
-            inversePrecision = 1 / precision;
+            _precision = precision;
+            _blockSize = blockSize;
+            _inversePrecision = 1 / precision;
         }
 
         public void Pack(NetworkWriter writer, float value)
         {
-            int scaled = Mathf.RoundToInt(value * inversePrecision);
-            uint zig = ZigZag.Encode(scaled);
-            VarIntBlocksPacker.Pack(writer, zig, blockSize);
+            var scaled = Mathf.RoundToInt(value * _inversePrecision);
+            var zig = ZigZag.Encode(scaled);
+            VarIntBlocksPacker.Pack(writer, zig, _blockSize);
         }
 
         public float Unpack(NetworkReader reader)
         {
-            uint zig = (uint)VarIntBlocksPacker.Unpack(reader, blockSize);
-            int scaled = ZigZag.Decode(zig);
-            return scaled * precision;
+            var zig = (uint)VarIntBlocksPacker.Unpack(reader, _blockSize);
+            var scaled = ZigZag.Decode(zig);
+            return scaled * _precision;
         }
     }
-
 }
