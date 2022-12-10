@@ -4,13 +4,14 @@ using System.Linq;
 using System.Reflection;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using Unity.CompilationPipeline.Common.Diagnostics;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
 
 namespace Mirage.Weaver
 {
-    class Program
+    internal class Program
     {
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
             try
             {
@@ -27,6 +28,8 @@ namespace Mirage.Weaver
                 var assemblyDefinition = weaver.Weave(compiledAssembly);
                 Write(assemblyDefinition, dllPath, compiledAssembly.PdbPath);
 
+
+                var exitCode = CheckDiagnostics(weaverLogger);
                 Environment.ExitCode = 0;
             }
             catch (Exception e)
@@ -35,6 +38,22 @@ namespace Mirage.Weaver
                 Console.Error.WriteLine(e);
                 return;
             }
+        }
+
+        private static int CheckDiagnostics(WeaverLogger weaverLogger)
+        {
+            var diagnostics = weaverLogger.Diagnostics;
+            var exitCode = 0;
+            foreach (var message in diagnostics)
+            {
+                var data = message.MessageData;
+                var type = message.DiagnosticType;
+                Console.WriteLine($"[{type}]: {data}");
+
+                if (type == DiagnosticType.Error)
+                    exitCode = 1;
+            }
+            return exitCode;
         }
 
         private static void Write(AssemblyDefinition assemblyDefinition, string dllPath, string pdbPath)
