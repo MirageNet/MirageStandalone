@@ -11,6 +11,9 @@
     <PackageProjectUrl></PackageProjectUrl>
     <RepositoryUrl>https://github.com/MirageNet/MirageStandalone</RepositoryUrl>
     <AssemblyVersion>130.3.0</AssemblyVersion>
+    <Version>130.3.1</Version>
+    <PackageId>MirageNet.$(AssemblyName)</PackageId>
+    <Title>$(AssemblyName)</Title>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,12 +27,28 @@
     <None Remove="WeaverExample\**" />
     <None Remove="Weaver\**" />
   </ItemGroup>
+  
+  
+  <ItemGroup>
+    <Content Include="bin\$(Configuration)\$(TargetFramework)\*.dll">  
+      <PackagePath>lib\$(TargetFramework)\</PackagePath>
+      <Pack>true</Pack>
+    </Content>
+  </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Mirage.Logging\Mirage.Logging.csproj" />
-    <ProjectReference Include="..\Mirage.SocketLayer\Mirage.SocketLayer.csproj" />
-    <ProjectReference Include="..\Mirage.Sockets\Mirage.Sockets.csproj" />
-    <ProjectReference Include="..\UnityEngine\FakeUnityEngine.csproj" />
+    <ProjectReference Include="..\Mirage.Logging\Mirage.Logging.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\Mirage.SocketLayer\Mirage.SocketLayer.csproj" >
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\Mirage.Sockets\Mirage.Sockets.csproj" >
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\UnityEngine\FakeUnityEngine.csproj" >
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
   </ItemGroup>
 
 </Project>
