@@ -18,7 +18,7 @@ namespace Mirage
     /// </remarks>
     [AddComponentMenu("Network/NetworkServer")]
     [DisallowMultipleComponent]
-    public class NetworkServer : MonoBehaviour, INetworkServer
+    public class NetworkServer : MonoBehaviour
     {
         private static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkServer));
 
@@ -111,7 +111,7 @@ namespace Mirage
         /// <summary>
         /// The host client for this server 
         /// </summary>
-        public INetworkClient LocalClient { get; private set; }
+        public NetworkClient LocalClient { get; private set; }
 
         /// <summary>
         /// True if there is a local client connected to this server (host mode)
@@ -141,6 +141,12 @@ namespace Mirage
         public NetworkWorld World { get; private set; }
         public SyncVarSender SyncVarSender { get; private set; }
         public MessageHandler MessageHandler { get; private set; }
+
+        /// <summary>
+        /// Set to true if you want to manually call <see cref="UpdateReceive"/> and <see cref="UpdateSent"/> and stop mirage from automatically calling them
+        /// </summary>
+        [HideInInspector]
+        public bool ManualUpdate = false;
 
         private void OnDestroy()
         {
@@ -251,17 +257,12 @@ namespace Mirage
             if (LocalClient != null)
             {
                 // we should call onStartHost after transport is ready to be used
-                // this allows server methods like NetworkServer.Spawn to be called in there
+                // this allows server methods like ServerObjectManager.Spawn to be called in there
                 _onStartHost?.Invoke();
 
                 localClient.ConnectHost(this, dataHandler);
                 if (logger.LogEnabled()) logger.Log("NetworkServer StartHost");
             }
-        }
-
-        void INetworkServer.StartServer()
-        {
-            StartServer();
         }
 
         private void ThrowIfActive()
@@ -295,7 +296,16 @@ namespace Mirage
 
         internal void Update()
         {
-            _peer?.UpdateReceive();
+            if (ManualUpdate)
+                return;
+
+            UpdateReceive();
+            UpdateSent();
+        }
+
+        public void UpdateReceive() => _peer?.UpdateReceive();
+        public void UpdateSent()
+        {
             SyncVarSender?.Update();
             _peer?.UpdateSent();
         }
@@ -393,7 +403,7 @@ namespace Mirage
         /// Create Player on Server for hostmode and adds it to collections
         /// <para>Does not invoke <see cref="Connected"/> event, use <see cref="InvokeLocalConnected"/> instead at the correct time</para>
         /// </summary>
-        internal void AddLocalConnection(INetworkClient client, IConnection connection)
+        internal void AddLocalConnection(NetworkClient client, IConnection connection)
         {
             if (LocalPlayer != null)
             {
@@ -509,6 +519,40 @@ namespace Mirage
             }
         }
 
+        /// <summary>
+        /// Sends a message to many connections, expect <paramref name="excluded"/>.
+        /// <para>
+        /// This can be useful if you want to send to a observers of an object expect the owner. Or if you want to send to all expect the local host player.
+        /// </para>
+        /// <para>WARNING: using this method <b>may</b> cause Enumerator to be boxed creating GC/alloc. Use <see cref="SendToMany{T}(IReadOnlyList{INetworkPlayer}, T, int)"/> version where possible</para>
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="players"></param>
+        /// <param name="excluded">player to exclude, Can be null</param>
+        /// <param name="msg"></param>
+        /// <param name="channelId"></param>
+        public static void SendToManyExcept<T>(IEnumerable<INetworkPlayer> players, INetworkPlayer excluded, T msg, int channelId = Channel.Reliable)
+        {
+            using (var writer = NetworkWriterPool.GetWriter())
+            {
+                // pack message into byte[] once
+                MessagePacker.Pack(msg, writer);
+                var segment = writer.ToArraySegment();
+                var count = 0;
+
+                foreach (var player in players)
+                {
+                    if (player == excluded)
+                        continue;
+
+                    player.Send(segment, channelId);
+                    count++;
+                }
+
+                NetworkDiagnostics.OnSend(msg, segment.Count, count);
+            }
+        }
+
         //called once a client disconnects from the server
         private void OnDisconnected(INetworkPlayer player)
         {
@@ -539,7 +583,7 @@ namespace Mirage
         /// <summary>
         /// This class will later be removed when we have a better implementation for IDataHandler
         /// </summary>
-        private class DataHandler : IDataHandler
+        private sealed class DataHandler : IDataHandler
         {
             private readonly IMessageReceiver _messageHandler;
             private readonly Dictionary<IConnection, INetworkPlayer> _players;

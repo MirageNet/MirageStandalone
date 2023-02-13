@@ -22,6 +22,7 @@ namespace Mirage.Weaver
 
         private readonly HashSet<TypeReference> messages = new HashSet<TypeReference>(new TypeReferenceComparer());
 
+        private readonly IWeaverLogger logger;
         private readonly ModuleDefinition module;
         private readonly Readers readers;
         private readonly Writers writers;
@@ -32,11 +33,12 @@ namespace Mirage.Weaver
         /// Mirage's main module used to find built in extension methods and messages
         /// </summary>
 
-        public ReaderWriterProcessor(ModuleDefinition module, Readers readers, Writers writers)
+        public ReaderWriterProcessor(ModuleDefinition module, Readers readers, Writers writers, IWeaverLogger logger)
         {
             this.module = module;
             this.readers = readers;
             this.writers = writers;
+            this.logger = logger;
             extensionHelper = new SerailizeExtensionHelper(module, readers, writers);
 
             var typeInMirage = module.ImportReference(typeof(NetworkWriter));
@@ -71,6 +73,12 @@ namespace Mirage.Weaver
             foreach (var reference in module.AssemblyReferences)
             {
                 var assembly = module.AssemblyResolver.Resolve(reference);
+                if (assembly == null)
+                {
+                    logger.Warning($"Failed to resolve assembly reference: {reference}");
+                    continue;
+                }
+
                 references.Add(assembly);
             }
 
@@ -215,7 +223,7 @@ namespace Mirage.Weaver
         {
             var type = field.DeclaringType;
 
-            if (type.Is(typeof(Writer<>)) || type.Is(typeof(Reader<>)) && type.IsGenericInstance)
+            if (type.Is(typeof(Writer<>)) || (type.Is(typeof(Reader<>)) && type.IsGenericInstance))
             {
                 var typeGenericInstance = (GenericInstanceType)type;
 
@@ -292,8 +300,7 @@ namespace Mirage.Weaver
                 method.Is<MessageHandler>(nameof(MessageHandler.UnregisterHandler)) ||
                 method.Is<NetworkClient>(nameof(NetworkClient.Send)) ||
                 method.Is<NetworkServer>(nameof(NetworkServer.SendToAll)) ||
-                method.Is<NetworkServer>(nameof(NetworkServer.SendToMany)) ||
-                method.Is<INetworkServer>(nameof(INetworkServer.SendToAll));
+                method.Is<NetworkServer>(nameof(NetworkServer.SendToMany));
         }
 
         private static bool IsReadWriteMethod(MethodReference method)

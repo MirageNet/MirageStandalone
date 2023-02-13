@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Mirage
@@ -12,6 +12,20 @@ namespace Mirage
     [DisallowMultipleComponent]
     public abstract class NetworkVisibility : NetworkBehaviour
     {
+        public delegate void VisibilityChanged(INetworkPlayer player, bool visible);
+
+        /// <summary>
+        /// Invoked on server when visibility changes for player
+        /// <para>Invoked before Spawn/Show/Hide message is sent to client</para>
+        /// <para>Invoked when object is spawned, but not when it is desotroyed</para>
+        /// </summary>
+        public event VisibilityChanged OnVisibilityChanged;
+
+        internal void InvokeVisibilityChanged(INetworkPlayer player, bool visible)
+        {
+            OnVisibilityChanged?.Invoke(player, visible);
+        }
+
         /// <summary>
         /// Callback used by the visibility system to determine if an observer (player) can see this object.
         /// <para>If this function returns true, the network connection will be added as an observer.</para>

@@ -40,14 +40,22 @@ namespace Mirage
     /// </remarks>
     [AddComponentMenu("Network/ServerObjectManager")]
     [DisallowMultipleComponent]
-    public class ServerObjectManager : MonoBehaviour, IServerObjectManager
+    public class ServerObjectManager : MonoBehaviour
     {
         private static readonly ILogger logger = LogFactory.GetLogger(typeof(ServerObjectManager));
+        /// <summary>
+        /// HashSet for NetworkIdentity that can be re-used without allocation
+        /// </summary>
+        private static HashSet<NetworkIdentity> _setCache = new HashSet<NetworkIdentity>();
 
         [FormerlySerializedAs("server")]
         public NetworkServer Server;
         [FormerlySerializedAs("networkSceneManager")]
         public NetworkSceneManager NetworkSceneManager;
+
+        [Header("Authentication")]
+        [Tooltip("Will only send spawn message to Players who are Authenticated. Checks the Player.IsAuthenticated property")]
+        public bool OnlySpawnOnAuthenticated;
 
         public INetIdGenerator NetIdGenerator;
         private uint _nextNetworkId = 1;
@@ -226,7 +234,7 @@ namespace Mirage
             // controller.
             //
             // IMPORTANT: do this in AddCharacter & ReplaceCharacter!
-            SpawnVisibleObjectForPlayer(player);
+            SpawnVisibleObjects(player, identity);
 
             if (logger.LogEnabled()) logger.Log($"Replacing playerGameObject object netId: {identity.NetId} asset ID {identity.PrefabHash:X}");
 
@@ -236,43 +244,15 @@ namespace Mirage
                 previousCharacter.RemoveClientAuthority();
         }
 
-        private void SpawnVisibleObjectForPlayer(INetworkPlayer player)
-        {
-            if (logger.LogEnabled()) logger.Log($"Checking Observers on {Server.World.SpawnedIdentities.Count} objects for player: {player}");
-
-            if (!player.SceneIsReady)
-            {
-                // client needs to finish loading scene before we can spawn objects
-                // otherwise it would not find scene objects.
-                return;
-            }
-
-            // add connection to each nearby NetworkIdentity's observers, which
-            // internally sends a spawn message for each one to the connection.
-            foreach (var identity in Server.World.SpawnedIdentities)
-            {
-                // todo, do we only need to spawn active objects here? or all objects?
-                if (identity.gameObject.activeSelf)
-                {
-                    if (logger.LogEnabled()) logger.Log($"Checking Observers on server objects name='{identity.name}' netId={identity.NetId} sceneId={identity.SceneId:X}");
-
-                    var visible = identity.OnCheckObserver(player);
-                    if (visible)
-                    {
-                        identity.AddObserver(player);
-                    }
-                }
-            }
-        }
-
         /// <summary>
-        /// <para>When an <see cref="AddCharacterMessage"/> message handler has received a request from a player, the server calls this to associate the player object with the connection.</para>
-        /// <para>When a player is added for a connection, the client for that connection is made ready automatically. The player object is automatically spawned, so you do not need to call NetworkServer.Spawn for that object. This function is used for "adding" a player, not for "replacing" the player on a connection. If there is already a player on this playerControllerId for this connection, this will fail.</para>
+        /// <para>When <see cref="AddCharacterMessage"/> is received from a player, the server calls this to associate the character GameObject with the NetworkPlayer.</para>
+        /// <para>When a character is added for a player the object is automatically spawned, so you do not need to call ServerObjectManager.Spawn for that object.</para>
+        /// <para>This function is used for adding a character, not replacing. If there is already a character then use <see cref="ReplaceCharacter"/> instead.</para>
         /// </summary>
-        /// <param name="player">Connection which is adding the player.</param>
-        /// <param name="character">Player object spawned for the player.</param>
-        /// <param name="prefabHash"></param>
-        /// <returns></returns>
+        /// <param name="player">the Player to add the character to</param>
+        /// <param name="character">The Network Object to add to the Player. Can be spawned or unspawned. Calling this method will respawn it.</param>
+        /// <param name="prefabHash">New prefab hash to give to the player, used for dynamically creating objects at runtime.</param>
+        /// <exception cref="ArgumentException">throw when the player already has a character</exception>
         public void AddCharacter(INetworkPlayer player, GameObject character, int prefabHash)
         {
             var identity = character.GetNetworkIdentity();
@@ -280,27 +260,28 @@ namespace Mirage
         }
 
         /// <summary>
-        /// <para>When an <see cref="AddCharacterMessage"/> message handler has received a request from a player, the server calls this to associate the player object with the connection.</para>
-        /// <para>When a player is added for a connection, the client for that connection is made ready automatically. The player object is automatically spawned, so you do not need to call NetworkServer.Spawn for that object. This function is used for "adding" a player, not for "replacing" the player on a connection. If there is already a player on this playerControllerId for this connection, this will fail.</para>
+        /// <para>When <see cref="AddCharacterMessage"/> is received from a player, the server calls this to associate the character GameObject with the NetworkPlayer.</para>
+        /// <para>When a character is added for a player the object is automatically spawned, so you do not need to call ServerObjectManager.Spawn for that object.</para>
+        /// <para>This function is used for adding a character, not replacing. If there is already a character then use <see cref="ReplaceCharacter"/> instead.</para>
         /// </summary>
-        /// <param name="player">Connection which is adding the player.</param>
-        /// <param name="character">Player object spawned for the player.</param>
-        /// <param name="prefabHash"></param>
-        /// <returns></returns>
+        /// <param name="player">the Player to add the character to</param>
+        /// <param name="character">The Network Object to add to the Player. Can be spawned or unspawned. Calling this method will respawn it.</param>
+        /// <param name="prefabHash">New prefab hash to give to the player, used for dynamically creating objects at runtime.</param>
+        /// <exception cref="ArgumentException">throw when the player already has a character</exception>
         public void AddCharacter(INetworkPlayer player, NetworkIdentity character, int prefabHash)
         {
             character.PrefabHash = prefabHash;
             AddCharacter(player, character);
         }
 
-
         /// <summary>
-        /// <para>When an <see cref="AddCharacterMessage"/> message handler has received a request from a player, the server calls this to associate the player object with the connection.</para>
-        /// <para>When a player is added for a connection, the client for that connection is made ready automatically. The player object is automatically spawned, so you do not need to call NetworkServer.Spawn for that object. This function is used for "adding" a player, not for "replacing" the player on a connection. If there is already a player on this playerControllerId for this connection, this will fail.</para>
+        /// <para>When <see cref="AddCharacterMessage"/> is received from a player, the server calls this to associate the character GameObject with the NetworkPlayer.</para>
+        /// <para>When a character is added for a player the object is automatically spawned, so you do not need to call ServerObjectManager.Spawn for that object.</para>
+        /// <para>This function is used for adding a character, not replacing. If there is already a character then use <see cref="ReplaceCharacter"/> instead.</para>
         /// </summary>
-        /// <param name="player">Connection which is adding the player.</param>
-        /// <param name="character">Player object spawned for the player.</param>
-        /// <exception cref="ArgumentException">NetworkIdentity must not be null.</exception>
+        /// <param name="player">the Player to add the character to</param>
+        /// <param name="character">The Network Object to add to the Player. Can be spawned or unspawned. Calling this method will respawn it.</param>
+        /// <exception cref="ArgumentException">throw when the player already has a character</exception>
         public void AddCharacter(INetworkPlayer player, GameObject character)
         {
             var identity = character.GetNetworkIdentity();
@@ -308,12 +289,13 @@ namespace Mirage
         }
 
         /// <summary>
-        /// <para>When an <see cref="AddCharacterMessage"/> message handler has received a request from a player, the server calls this to associate the player object with the connection.</para>
-        /// <para>When a player is added for a connection, the client for that connection is made ready automatically. The player object is automatically spawned, so you do not need to call NetworkServer.Spawn for that object. This function is used for "adding" a player, not for "replacing" the player on a connection. If there is already a player on this playerControllerId for this connection, this will fail.</para>
+        /// <para>When <see cref="AddCharacterMessage"/> is received from a player, the server calls this to associate the character GameObject with the NetworkPlayer.</para>
+        /// <para>When a character is added for a player the object is automatically spawned, so you do not need to call ServerObjectManager.Spawn for that object.</para>
+        /// <para>This function is used for adding a character, not replacing. If there is already a character then use <see cref="ReplaceCharacter"/> instead.</para>
         /// </summary>
-        /// <param name="player">Connection which is adding the player.</param>
-        /// <param name="identity">Player object spawned for the player.</param>
-        /// <exception cref="ArgumentException">NetworkIdentity must not be null.</exception>
+        /// <param name="player">the Player to add the character to</param>
+        /// <param name="character">The Network Object to add to the Player. Can be spawned or unspawned. Calling this method will respawn it.</param>
+        /// <exception cref="ArgumentException">throw when the player already has a character</exception>
         public void AddCharacter(INetworkPlayer player, NetworkIdentity identity)
         {
             // cannot have an existing player object while trying to Add another.
@@ -339,7 +321,7 @@ namespace Mirage
             }
 
             // spawn any new visible scene objects
-            SpawnVisibleObjects(player);
+            SpawnVisibleObjects(player, identity);
 
             if (logger.LogEnabled()) logger.Log($"Adding new playerGameObject object netId: {identity.NetId} asset ID {identity.PrefabHash:X}");
 
@@ -367,6 +349,10 @@ namespace Mirage
         /// <param name="player"></param>
         internal void ShowToPlayer(NetworkIdentity identity, INetworkPlayer player)
         {
+            var visiblity = identity.Visibility;
+            if (visiblity != null)
+                visiblity.InvokeVisibilityChanged(player, true);
+
             // dont send if loading scene
             if (player.SceneIsReady)
                 SendSpawnMessage(identity, player);
@@ -374,6 +360,10 @@ namespace Mirage
 
         internal void HideToPlayer(NetworkIdentity identity, INetworkPlayer player)
         {
+            var visiblity = identity.Visibility;
+            if (visiblity != null)
+                visiblity.InvokeVisibilityChanged(player, false);
+
             player.Send(new ObjectHideMessage { netId = identity.NetId });
         }
 
@@ -572,13 +562,15 @@ namespace Mirage
                 Server.World.AddIdentity(identity.NetId, identity);
             }
 
-            if (logger.LogEnabled()) logger.Log($"SpawnObject instance ID {identity.NetId} asset ID {identity.PrefabHash:X}");
+            if (logger.LogEnabled()) logger.Log($"SpawnObject NetId:{identity.NetId} PrefabHash:{identity.PrefabHash:X}");
 
             identity.RebuildObservers(true);
         }
 
         internal void SendSpawnMessage(NetworkIdentity identity, INetworkPlayer player)
         {
+            logger.Assert(!OnlySpawnOnAuthenticated || player.IsAuthenticated || identity.Visibility != null,
+                "SendSpawnMessage should only be called if OnlySpanwOnAuthenticated is false, player is authenticated, or there is custom visibility");
             if (logger.LogEnabled()) logger.Log($"Server SendSpawnMessage: name={identity.name} sceneId={identity.SceneId:X} netId={identity.NetId}");
 
             // one writer for owner, one for observers
@@ -735,19 +727,11 @@ namespace Mirage
             return identity.IsSceneObject;
         }
 
-        private class NetworkIdentityComparer : IComparer<NetworkIdentity>
-        {
-            public int Compare(NetworkIdentity x, NetworkIdentity y)
-            {
-                return x.NetId.CompareTo(y.NetId);
-            }
-        }
-
         /// <summary>
         /// This causes NetworkIdentity objects in a scene to be spawned on a server.
         /// <para>
         ///     Calling SpawnObjects() causes all scene objects to be spawned.
-        ///     It is like calling NetworkServer.Spawn() for each of them.
+        ///     It is like calling Spawn() for each of them.
         /// </para>
         /// </summary>
         /// <exception cref="InvalidOperationException">Thrown when server is not active</exception>
@@ -778,22 +762,101 @@ namespace Mirage
         /// </para>
         /// </summary>
         /// <param name="player">The player to spawn objects for</param>
-        public void SpawnVisibleObjects(INetworkPlayer player) => SpawnVisibleObjects(player, false);
+        // note: can't use optional param here because we need just NetworkPlayer version for event
+        public void SpawnVisibleObjects(INetworkPlayer player)
+        {
+            SpawnVisibleObjects(player, false, (HashSet<NetworkIdentity>)null);
+        }
 
         /// <summary>
         /// Sends spawn message for scene objects and other visible objects to the given player if it has a character
         /// </summary>
         /// <param name="player">The player to spawn objects for</param>
         /// <param name="ignoreHasCharacter">If true will spawn visibile objects even if player does not have a spawned character yet</param>
-        // note: can't use optional param here because we need just NetworkPlayer version for event
         public void SpawnVisibleObjects(INetworkPlayer player, bool ignoreHasCharacter)
+        {
+            SpawnVisibleObjects(player, ignoreHasCharacter, (HashSet<NetworkIdentity>)null);
+        }
+
+        /// <summary>
+        /// Sends spawn message for scene objects and other visible objects to the given player if it has a character
+        /// </summary>
+        /// <param name="player">The player to spawn objects for</param>
+        /// <param name="ignoreHasCharacter">If true will spawn visibile objects even if player does not have a spawned character yet</param>
+        public void SpawnVisibleObjects(INetworkPlayer player, NetworkIdentity skip)
+        {
+            SpawnVisibleObjects(player, false, skip);
+        }
+
+        /// <summary>
+        /// Sends spawn message for scene objects and other visible objects to the given player if it has a character
+        /// </summary>
+        /// <param name="player">The player to spawn objects for</param>
+        /// <param name="ignoreHasCharacter">If true will spawn visibile objects even if player does not have a spawned character yet</param>
+        /// <param name="skip">NetworkIdentity to skip when spawning. Can be null</param>
+        public void SpawnVisibleObjects(INetworkPlayer player, bool ignoreHasCharacter, NetworkIdentity skip)
+        {
+            _setCache.Clear();
+            _setCache.Add(skip);
+            SpawnVisibleObjects(player, ignoreHasCharacter, _setCache);
+        }
+
+        /// <summary>
+        /// Sends spawn message for scene objects and other visible objects to the given player if it has a character
+        /// </summary>
+        /// <param name="player">The player to spawn objects for</param>
+        /// <param name="ignoreHasCharacter">If true will spawn visibile objects even if player does not have a spawned character yet</param>
+        /// <param name="skip">NetworkIdentity to skip when spawning. Can be null</param>
+        public void SpawnVisibleObjects(INetworkPlayer player, bool ignoreHasCharacter, HashSet<NetworkIdentity> skip)
         {
             // todo Call player.RemoveAllVisibleObjects() first so that it will send spawn message for objects destroyed in scene change
             if (logger.LogEnabled()) logger.Log("SetClientReadyInternal for conn:" + player);
 
             // client is ready to start spawning objects
             if (ignoreHasCharacter || player.HasCharacter)
-                SpawnVisibleObjectForPlayer(player);
+                SpawnVisibleObjectInternal(player, skip);
+        }
+
+        private void SpawnVisibleObjectInternal(INetworkPlayer player, HashSet<NetworkIdentity> skip)
+        {
+            if (logger.LogEnabled()) logger.Log($"Checking Observers on {Server.World.SpawnedIdentities.Count} objects for player: {player}");
+
+            if (!player.SceneIsReady)
+            {
+                // client needs to finish loading scene before we can spawn objects
+                // otherwise it would not find scene objects.
+                return;
+            }
+
+            // add connection to each nearby NetworkIdentity's observers, which
+            // internally sends a spawn message for each one to the connection.
+            foreach (var identity in Server.World.SpawnedIdentities)
+            {
+                // allow for skips so that addChatacter doesn't send 2 spawn message for existing object
+                if (skip != null && skip.Contains(identity))
+                    continue;
+
+                // todo, do we only need to spawn active objects here? or all objects?
+                if (identity.gameObject.activeSelf)
+                {
+                    if (logger.LogEnabled()) logger.Log($"Checking Observers on server objects name='{identity.name}' netId={identity.NetId} sceneId={identity.SceneId:X}");
+
+                    var visible = identity.OnCheckObserver(player);
+                    if (visible)
+                    {
+                        identity.AddObserver(player);
+                    }
+                }
+            }
+        }
+
+
+        private sealed class NetworkIdentityComparer : IComparer<NetworkIdentity>
+        {
+            public int Compare(NetworkIdentity x, NetworkIdentity y)
+            {
+                return x.NetId.CompareTo(y.NetId);
+            }
         }
     }
 }

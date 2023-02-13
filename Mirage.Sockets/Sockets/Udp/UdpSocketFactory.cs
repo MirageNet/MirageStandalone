@@ -1,18 +1,16 @@
 // nanosockets breaks on some platforms (like iOS)
 // so only include it for standalone and editor
 // but not for mac because of code signing issue
-#if (UNITY_STANDALONE || UNITY_EDITOR) && !(UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX)
-#define NANO_SOCKET_ALLOWED
-#endif
+// #if !(UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX)
+// #define NANO_SOCKET_ALLOWED
+// #endif
 
 using Mirage.SocketLayer;
 using System;
 using System.Net;
 using System.Net.Sockets;
 using UnityEngine;
-#if NANO_SOCKET_ALLOWED
 using NanoSockets;
-#endif
 
 namespace Mirage.Sockets.Udp
 {
@@ -23,21 +21,25 @@ namespace Mirage.Sockets.Udp
         public string Address = "localhost";
         public ushort Port = 7777;
 
-        [Tooltip("Allows you to set which Socket implementation you want to use.\nAutomatic will use native (NanoSockets) on supported platforms (Windows, Mac & Linux).")]
-        public SocketLib SocketLib;
+        [Tooltip("Which socket implementation do you wish to use?\nThe default (automatic) will attempt to use NanoSockets on supported platforms and fallback to C# Sockets if unsupported.")]
+        public SocketLib SocketLib = SocketLib.Automatic;
 
-        [Header("NanoSocket options")]
+        [Header("NanoSocket-specific Options")]
         public int BufferSize = 256 * 1024;
 
         public override int MaxPacketSize => UdpMTU.MaxPacketSize;
 
-        private bool useNanoSocket => SocketLib == SocketLib.Native || (SocketLib == SocketLib.Automatic && IsDesktop);
+        // Determines if we can use NanoSockets for socket-level IO. This will be true if either:
+        // - We *want* to use native library explicitly.
+        // - We have it set to Automatic selection and NanoSockets is supported.
+        private bool useNanoSocket => SocketLib == SocketLib.Native || (SocketLib == SocketLib.Automatic && CheckNanosocketsSupport());
 
         string IHasAddress.Address
         {
             get => Address;
             set => Address = value;
         }
+
         int IHasPort.Port
         {
             get => Port;
@@ -54,31 +56,24 @@ namespace Mirage.Sockets.Udp
 
         private void Awake()
         {
+            // Do not attempt to initialize NanoSockets if we're not using them.
             if (!useNanoSocket) return;
 
-            // NanoSocket is only available on Windows, Mac and Linux
-            // However on newer versions of Mac it causes the standalone builds
-            // to be unable to load the NanoSocket native library. So we just use
-            // C# Managed sockets instead.
-
-            // give different warning for OSX
-#if UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
-            Debug.LogWarning("NanoSocket support on MacOS is tempermental due to codesigning issues.\nTo ensure functionality, C# sockets will be used instead. This message is harmless (don't panic!).");
-            SocketLib = SocketLib.Managed;
-            return;
-
-            // "Standalone" here is referring to Win64 or Linux64, but not mac, because that should be covered by case above
-#elif NANO_SOCKET_ALLOWED
-            // Attempt initialization of NanoSockets native library. If this fails, go back to native.
-            InitializeNanoSockets();
-#else
-            Debug.LogWarning("NanoSocket does not support this platform (non-desktop platform detected). Switching to C# Managed sockets.");
-            this.SocketLib = SocketLib.Managed;
-#endif
+            if (CheckNanosocketsSupport())
+            {
+                // Debug.Log("DEBUG: Nanosockets supported on this platform");
+                InitializeNanoSockets();
+            }
+            else
+            {
+                Debug.LogWarning("NanoSocket support not available on this platform; falling back to Managed Sockets.");
+                SocketLib = SocketLib.Managed;
+            }
         }
 
-#if NANO_SOCKET_ALLOWED
-        // Initializes the NanoSockets native library. If it fails, it resorts to C# Managed Sockets.
+        /// <summary>
+        /// Initializes the NanoSockets native library. If it fails, it resorts to C# Managed Sockets.
+        /// </summary>
         private void InitializeNanoSockets()
         {
             try
@@ -87,57 +82,61 @@ namespace Mirage.Sockets.Udp
 
                 initCount++;
             }
-            catch (DllNotFoundException)
+            catch (Exception ex)
             {
-                Debug.LogWarning("NanoSocket DLL not found or failed to load. Switching to C# Managed Sockets.");
+                Debug.LogWarning($"NanoSocket native library not found or failed to load; switching to C# Managed Sockets. Exception returned was:\n{ex}");
                 SocketLib = SocketLib.Managed;
             }
         }
-#endif
 
         private void OnDestroy()
         {
-            if (!useNanoSocket) return;
-
-#if NANO_SOCKET_ALLOWED
-            initCount--;
-
-            if (initCount == 0)
+            if (useNanoSocket)
             {
-                UDP.Deinitialize();
+                initCount--;
+
+                if (initCount == 0) UDP.Deinitialize();
             }
-#endif
         }
 
         public override ISocket CreateClientSocket()
         {
             ThrowIfNotSupported();
 
-#if NANO_SOCKET_ALLOWED
-            if (useNanoSocket) return new NanoSocket(this);
-#endif
-
-            return new UdpSocket();
+            if (useNanoSocket)
+            {
+                return new NanoSocket(this);
+            }
+            else
+            {
+                return new UdpSocket();
+            }
         }
 
         public override ISocket CreateServerSocket()
         {
             ThrowIfNotSupported();
 
-#if NANO_SOCKET_ALLOWED
-            if (useNanoSocket) return new NanoSocket(this);
-#endif
-
-            return new UdpSocket();
+            if (useNanoSocket)
+            {
+                return new NanoSocket(this);
+            }
+            else
+            {
+                return new UdpSocket();
+            }
         }
 
         public override IEndPoint GetBindEndPoint()
         {
-#if NANO_SOCKET_ALLOWED
-            if (useNanoSocket) return new NanoEndPoint("::0", Port);
-#endif
-
-            return new EndPointWrapper(new IPEndPoint(IPAddress.IPv6Any, Port));
+            if (useNanoSocket)
+            {
+                return new NanoEndPoint("::0", Port);
+            }
+            else
+            {
+                return new EndPointWrapper(new IPEndPoint(IPAddress.IPv6Any, Port));
+            }
         }
 
         public override IEndPoint GetConnectEndPoint(string address = null, ushort? port = null)
@@ -147,11 +146,14 @@ namespace Mirage.Sockets.Udp
 
             var portIn = port ?? Port;
 
-#if NANO_SOCKET_ALLOWED
-            if (useNanoSocket) return new NanoEndPoint(addressString, portIn);
-#endif
-
-            return new EndPointWrapper(new IPEndPoint(ipAddress, portIn));
+            if (useNanoSocket)
+            {
+                return new NanoEndPoint(addressString, portIn);
+            }
+            else
+            {
+                return new EndPointWrapper(new IPEndPoint(ipAddress, portIn));
+            }
         }
 
         private IPAddress getAddress(string addressString)
@@ -170,20 +172,46 @@ namespace Mirage.Sockets.Udp
             }
         }
 
+        /// <summary>
+        /// Explicitly throws an exception if a platform is not supported.
+        /// Currently only fires on WebGL.
+        /// </summary>
+        /// <exception cref="NotSupportedException">Tells you why it's not supported.</exception>
         private void ThrowIfNotSupported()
         {
-            if (IsWebgl)
+            if (IsWebGL)
             {
                 throw new NotSupportedException("The WebGL platform does not support UDP Sockets. Please use WebSockets instead.");
             }
         }
 
-        private static bool IsWebgl => Application.platform == RuntimePlatform.WebGLPlayer;
-        private static bool IsDesktop =>
-            Application.platform == RuntimePlatform.LinuxPlayer
-            || Application.platform == RuntimePlatform.OSXPlayer
+        /// <summary>
+        /// Is this platform a WebGL-based one?
+        /// </summary>
+        private static bool IsWebGL => Application.platform == RuntimePlatform.WebGLPlayer;
+
+        /// <summary>
+        /// Checks to ensure that Nanosockets supports this platform.
+        /// </summary>
+        /// <returns>True if supported platform, False if not.</returns>
+        private static bool CheckNanosocketsSupport()
+        {
+#if UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
+            // Short-circut. Mac seemingly has some issues with Nanosockets and
+            // requires further investigation.
+            return false;
+
+#elif NETCOREAPP || NET_5_0_OR_GREATER
+            // Returns true as this would be for Mirage Standalone support.
+            return true;
+
+#else
+            // Nanosocket can run inside Windows and Linux. Mac is excluded for now due to above if condition.
+            return Application.platform == RuntimePlatform.LinuxPlayer
             || Application.platform == RuntimePlatform.WindowsPlayer
             || Application.isEditor;
+#endif
+        }
     }
 
     public class EndPointWrapper : IEndPoint

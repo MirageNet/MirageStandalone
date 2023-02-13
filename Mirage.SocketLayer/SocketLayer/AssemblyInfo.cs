@@ -1,6 +1,6 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
-[assembly: AssemblyVersion("126.0.1")]
+[assembly: AssemblyVersion("130.3.0")]
 
 [assembly: InternalsVisibleTo("Mirage.SocketLayer.Tests")]

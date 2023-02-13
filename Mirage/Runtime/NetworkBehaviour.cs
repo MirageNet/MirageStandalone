@@ -92,7 +92,7 @@ namespace Mirage
         /// <summary>
         /// The <see cref="NetworkServer">NetworkClient</see> associated to this object.
         /// </summary>
-        public INetworkServer Server => Identity.Server;
+        public NetworkServer Server => Identity.Server;
 
         /// <summary>
         /// Quick Reference to the NetworkIdentities ServerObjectManager. Present only for server/host instances.
@@ -102,7 +102,7 @@ namespace Mirage
         /// <summary>
         /// The <see cref="NetworkClient">NetworkClient</see> associated to this object.
         /// </summary>
-        public INetworkClient Client => Identity.Client;
+        public NetworkClient Client => Identity.Client;
 
         /// <summary>
         /// Quick Reference to the NetworkIdentities ClientObjectManager. Present only for instances instances.
@@ -120,6 +120,12 @@ namespace Mirage
         /// Returns the appropriate NetworkTime instance based on if this NetworkBehaviour is running as a Server or Client.
         /// </summary>
         public NetworkTime NetworkTime => World.Time;
+
+        /// <summary>
+        /// Get Id of this NetworkBehaviour, Its NetId and ComponentIndex
+        /// </summary>
+        /// <returns></returns>
+        public Id BehaviourId => new Id(this);
 
         protected internal ulong SyncVarDirtyBits { get; private set; }
 
@@ -486,12 +492,49 @@ namespace Mirage
         /// <para>Can be used to get RPC name from its index</para>
         /// <para>NOTE: Weaver uses this collection to add rpcs, If adding your own rpc do at your own risk</para>
         /// </summary>
+        [NonSerialized]
         public readonly RemoteCallCollection RemoteCallCollection;
 
-        public NetworkBehaviour()
+        protected NetworkBehaviour()
         {
             RemoteCallCollection = new RemoteCallCollection(this);
         }
         #endregion
+
+        public struct Id : IEquatable<Id>
+        {
+            public readonly uint NetId;
+            public readonly int ComponentIndex;
+
+            public Id(uint netId, int componentIndex)
+            {
+                NetId = netId;
+                ComponentIndex = componentIndex;
+            }
+
+            public Id(NetworkBehaviour behaviour)
+            {
+                NetId = behaviour.NetId;
+                ComponentIndex = behaviour.ComponentIndex;
+            }
+
+            public override int GetHashCode()
+            {
+                return ((int)NetId * 256) + ComponentIndex;
+            }
+
+            public bool Equals(Id other)
+            {
+                return (NetId == other.NetId) && (ComponentIndex == other.ComponentIndex);
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (obj is Id id)
+                    return Equals(id);
+                else
+                    return false;
+            }
+        }
     }
 }

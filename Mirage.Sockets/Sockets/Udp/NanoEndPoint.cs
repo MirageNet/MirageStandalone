@@ -1,4 +1,3 @@
-#if UNITY_STANDALONE || UNITY_EDITOR
 using System;
 using Mirage.SocketLayer;
 using NanoSockets;
@@ -7,11 +6,10 @@ namespace Mirage.Sockets.Udp
 {
     public sealed class NanoEndPoint : IEndPoint, IEquatable<NanoEndPoint>
     {
-        public Address address;
+        public Address address = new Address();
 
         public NanoEndPoint(string host, ushort port)
         {
-            address = new Address();
             address.port = port;
             UDP.SetHostName(ref address, host);
         }
@@ -52,4 +50,3 @@ namespace Mirage.Sockets.Udp
         }
     }
 }
-#endif

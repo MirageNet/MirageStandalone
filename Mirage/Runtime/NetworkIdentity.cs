@@ -180,7 +180,7 @@ namespace Mirage
         /// <summary>
         /// The NetworkServer associated with this NetworkIdentity.
         /// </summary>
-        public INetworkServer Server { get; internal set; }
+        public NetworkServer Server { get; internal set; }
 
         /// <summary>
         /// The world this object exists in
@@ -199,7 +199,7 @@ namespace Mirage
         /// <summary>
         /// The NetworkClient associated with this NetworkIdentity.
         /// </summary>
-        public INetworkClient Client { get; internal set; }
+        public NetworkClient Client { get; internal set; }
 
         /// <summary>
         /// The ClientObjectManager is present only for client instances.
@@ -325,34 +325,19 @@ namespace Mirage
             }
             internal set
             {
-                var newID = value;
-                var oldId = _prefabHash;
-
-                // they are the same, do nothing
-                if (oldId == newID)
-                    return;
-
-                // new is empty
-                if (newID == 0)
+                if (value == 0)
                 {
-                    throw new ArgumentException($"Cannot set PrefabHash to an empty guid on NetworkIdentity '{name}'. Old PrefabHash '{oldId}'.");
+                    throw new ArgumentException($"Cannot set PrefabHash to 0 on '{name}'. Old PrefabHash '{_prefabHash}'.");
                 }
 
-                // old not empty
-                if (oldId != 0)
-                {
-                    throw new InvalidOperationException($"Cannot set PrefabHash on NetworkIdentity '{name}' because it already had an PrefabHash. " +
-                        $"Current PrefabHash is '{oldId}', attempted new PrefabHash is '{newID}'.");
-                }
+                var old = _prefabHash;
+                _prefabHash = value;
 
-                // old is empty
-                _prefabHash = newID;
-
-                if (logger.LogEnabled()) logger.Log($"Setting PrefabHash on NetworkIdentity '{name}' with new PrefabHash '{newID}'");
+                if (logger.LogEnabled()) logger.Log($"Setting PrefabHash on '{name}' to '{value}', Old PrefabHash:{old}");
             }
         }
 
-#if UNITY_EDITOR
+#if UNITY_EDITOR || MIRAGE_TESTS
         /// <summary>
         /// Gets PrefabHash avoiding runtime checks
         /// <para>used by NetworkIdentityIdGenerator</para>
@@ -389,7 +374,7 @@ namespace Mirage
 
         /// <summary>
         /// This is invoked for NetworkBehaviour objects when they become active on the server.
-        /// <para>This could be triggered by NetworkServer.Listen() for objects in the scene, or by NetworkServer.Spawn() for objects that are dynamically created.</para>
+        /// <para>This could be triggered by NetworkServer.Start() for objects in the scene, or by ServerObjectManager.Spawn() for objects you spawn at runtime.</para>
         /// <para>This will be called for objects on a "host" as well as for object on a dedicated server.</para>
         /// <para>OnStartServer is invoked before this object is added to collection of spawned objects</para>
         /// </summary>
@@ -416,7 +401,7 @@ namespace Mirage
         /// When <see cref="AssignClientAuthority"/> or <see cref="RemoveClientAuthority"/> is called on the server, this will be called on the client that owns the object.
         /// </para>
         /// <para>
-        /// When an object is spawned with <see cref="ServerObjectManager.Spawn">NetworkServer.Spawn</see> with a NetworkConnection parameter included,
+        /// When an object is spawned with <see cref="ServerObjectManager.Spawn">ServerObjectManager.Spawn</see> with a NetworkConnection parameter included,
         /// this will be called on the client that owns the object.
         /// </para>
         /// <para>NOTE: this even is only called for client and host</para>
@@ -506,7 +491,7 @@ namespace Mirage
         private void OnDestroy()
         {
             // Objects spawned from Instantiate are not allowed so are destroyed right away
-            // we don't want to call NetworkServer.Destroy if this is the case
+            // we don't want to call ServerObjectManager.Destroy if this is the case
             if (SpawnedFromInstantiate)
                 return;
 
@@ -830,8 +815,14 @@ namespace Mirage
             // add all server connections
             foreach (var player in Server.Players)
             {
-                if (player.SceneIsReady)
-                    AddObserver(player);
+                if (!player.SceneIsReady)
+                    continue;
+
+                // todo replace this with a better visibility system (where default checks auth/scene ready)
+                if (ServerObjectManager.OnlySpawnOnAuthenticated && !player.IsAuthenticated)
+                    continue;
+
+                AddObserver(player);
             }
 
             // add local host connection (if any)
@@ -968,7 +959,7 @@ namespace Mirage
 
         /// <summary>
         /// Removes ownership for an object.
-        /// <para>This applies to objects that had authority set by AssignClientAuthority, or <see cref="ServerObjectManager.Spawn">NetworkServer.Spawn</see> with a NetworkConnection
+        /// <para>This applies to objects that had authority set by AssignClientAuthority, or <see cref="ServerObjectManager.Spawn">ServerObjectManager.Spawn</see> with a NetworkConnection
         /// parameter included.</para>
         /// <para>Authority cannot be removed for player objects.</para>
         /// </summary>
@@ -1035,21 +1026,7 @@ namespace Mirage
             _onStopServer.Reset();
         }
 
-        internal void UpdateVars()
-        {
-            if (observers.Count > 0)
-            {
-                SendUpdateVarsMessage();
-            }
-            else
-            {
-                // clear all component's dirty bits.
-                // it would be spawned on new observers anyway.
-                ClearAllComponentsDirtyBits();
-            }
-        }
-
-        private void SendUpdateVarsMessage()
+        internal void SendUpdateVarsMessage()
         {
             // one writer for owner, one for observers
             using (PooledNetworkWriter ownerWriter = NetworkWriterPool.GetWriter(), observersWriter = NetworkWriterPool.GetWriter())
