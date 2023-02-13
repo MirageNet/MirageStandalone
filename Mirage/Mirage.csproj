@@ -8,6 +8,9 @@
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <PackageProjectUrl></PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MirageNet/MirageStandalone</RepositoryUrl>
+    <AssemblyVersion>130.3.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>
