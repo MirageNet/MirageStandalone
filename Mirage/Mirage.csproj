@@ -10,8 +10,8 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <PackageProjectUrl></PackageProjectUrl>
     <RepositoryUrl>https://github.com/MirageNet/MirageStandalone</RepositoryUrl>
-    <AssemblyVersion>130.3.0</AssemblyVersion>
-    <Version>130.3.1</Version>
+    <AssemblyVersion>130.3.0</AssemblyVersion> <!-- Mirage version -->
+    <Version>130.3.3</Version> <!-- package version -->
     <PackageId>MirageNet.$(AssemblyName)</PackageId>
     <Title>$(AssemblyName)</Title>
   </PropertyGroup>
@@ -51,4 +51,12 @@
     </ProjectReference>
   </ItemGroup>
 
+  <PropertyGroup>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>mirage3.png</PackageIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="./mirage3.png" Pack="true" PackagePath="" />
+    <None Include="./README.md" Pack="true" PackagePath=""/>
+  </ItemGroup>
 </Project>

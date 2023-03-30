@@ -4,10 +4,13 @@ Mirage Standalone package is a .NET Core version of [Mirage](https://github.com/
 
 Mirage is a rolling-release high-level API for the Unity Game Engine that provides a powerful, yet easy to use networking API. It is designed to work with Unity 3D and is available on GitHub.
 
+## .NET Core Setup 
 
-## Adding Weaver to project
+### Adding Weaver to project
 
-Add this to the `.csproj` for a project.
+Mirage uses mono.cecil to modify dlls after they are built to make some of the networking features work.
+
+To make this work on your projects add this to the `.csproj` for a project.
 
 ```
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
@@ -17,16 +20,4 @@ Add this to the `.csproj` for a project.
 ```
 
 It will cause weaver to run when that project is compiled and stop if weaver has any errors
-
-
-## How to update this repo
-
-Run copy script
-```sh
-CopyFromMirage.sh "<path to mirage repo>"
-```
-
-This script will delete all old scripts and copy new scripts into the correct folders in this repo. 
-The files should then be double checked before committing and pushing.
-
 
