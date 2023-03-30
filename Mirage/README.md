@@ -12,9 +12,15 @@ Mirage uses mono.cecil to modify dlls after they are built to make some of the n
 
 To make this work on your projects add this to the `.csproj` for a project.
 
+make sure to add the `GeneratePathProperty` part to `PackageReference`, so that the build function can find the CodeGen folder
+
 ```
+  <ItemGroup>
+    <PackageReference Include="MirageNet.Mirage" Version="130.3.5" GeneratePathProperty="true" />
+  </ItemGroup>
+
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="$(SolutionDir)\\Mirage.CodeGen\bin\$(ConfigurationName)\net5.0\Mirage.CodeGen.exe $(TargetPath)" />
+    <Exec Command="&quot;$(PkgMirageNet_Mirage)/CodeGen/Mirage.CodeGen.exe&quot; &quot;$(TargetPath)&quot;" />
     <Error Condition="$(ExitCode) == 1" />
   </Target>
 ```

@@ -7,11 +7,24 @@ Mirage is a rolling-release high-level API for the Unity Game Engine that provid
 
 ## Adding Weaver to project
 
-Add this to the `.csproj` for a project.
+Add this to the `.csproj` for a project. when working within this project
 
 ```
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <Exec Command="$(SolutionDir)\\Mirage.CodeGen\bin\$(ConfigurationName)\net5.0\Mirage.CodeGen.exe $(TargetPath)" />
+    <Error Condition="$(ExitCode) == 1" />
+  </Target>
+```
+
+or add this when working with the nuget package
+
+```
+  <ItemGroup>
+    <PackageReference Include="MirageNet.Mirage" Version="130.3.5" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="&quot;$(PkgMirageNet_Mirage)/CodeGen/Mirage.CodeGen.exe&quot; &quot;$(TargetPath)&quot;" />
     <Error Condition="$(ExitCode) == 1" />
   </Target>
 ```

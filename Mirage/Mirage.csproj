@@ -11,7 +11,7 @@
     <PackageProjectUrl></PackageProjectUrl>
     <RepositoryUrl>https://github.com/MirageNet/MirageStandalone</RepositoryUrl>
     <AssemblyVersion>130.3.0</AssemblyVersion> <!-- Mirage version -->
-    <Version>130.3.5</Version> <!-- package version -->
+    <Version>130.3.6</Version> <!-- package version -->
     <PackageId>MirageNet.$(AssemblyName)</PackageId>
     <Title>$(AssemblyName)</Title>
     <PackageReadmeFile>README.md</PackageReadmeFile>
