@@ -10,8 +10,8 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <PackageProjectUrl></PackageProjectUrl>
     <RepositoryUrl>https://github.com/MirageNet/MirageStandalone</RepositoryUrl>
-    <AssemblyVersion>130.3.0</AssemblyVersion> <!-- Mirage version -->
-    <Version>130.3.6</Version> <!-- package version -->
+    <AssemblyVersion>131.0.1</AssemblyVersion> <!-- Mirage version -->
+    <Version>131.0.1</Version> <!-- package version -->
     <PackageId>MirageNet.$(AssemblyName)</PackageId>
     <Title>$(AssemblyName)</Title>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -20,12 +20,14 @@
 
 
   <PropertyGroup>
-    <MirageCodeGenExe>../Mirage.CodeGen/bin/Release/net6.0/win-x64/publish/Mirage.CodeGen.exe</MirageCodeGenExe>
+    <MirageCodeGenExe>../Mirage.CodeGen/bin/Release/net6.0/publish</MirageCodeGenExe>
   </PropertyGroup>
   <ItemGroup>
     <None Include="./mirage3.png" Pack="true" PackagePath="" />
     <None Include="./README.md" Pack="true" PackagePath=""/>
-    <Content Include="$(MirageCodeGenExe)" Pack="true" PackagePath="CodeGen" Condition="Exists($(MirageCodeGenExe))"/>
+    <Content Include="$(MirageCodeGenExe)/**/*.dll" Pack="true" PackagePath="CodeGen" Condition="Exists($(MirageCodeGenExe))"/>
+    <Content Include="$(MirageCodeGenExe)/**/*.exe" Pack="true" PackagePath="CodeGen" Condition="Exists($(MirageCodeGenExe))"/>
+    <Content Include="$(MirageCodeGenExe)/**/*.json" Pack="true" PackagePath="CodeGen" Condition="Exists($(MirageCodeGenExe))"/>
   </ItemGroup>
 
   <ItemGroup>
