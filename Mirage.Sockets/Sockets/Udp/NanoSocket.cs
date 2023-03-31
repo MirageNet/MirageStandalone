@@ -1,16 +1,16 @@
+// windows, linux or standalone c#, unless EXCLUDE_NANOSOCKETS is defined
+#if !EXCLUDE_NANOSOCKETS && (UNITY_EDITOR_WIN || UNITY_EDITOR_LINUX || UNITY_STANDALONE_WIN || UNITY_STANDALONE_LINUX || NETCOREAPP || NET_5_0_OR_GREATER)
 using System;
 using Mirage.SocketLayer;
 using NanoSockets;
 
 namespace Mirage.Sockets.Udp
 {
-    // todo Create an Exception in mirage that can be re-used by multiple sockets (makes it easier for user to catch)
-    public class NanoSocketException : Exception
-    {
-        public NanoSocketException(string message) : base(message) { }
-    }
+
     public sealed class NanoSocket : ISocket, IDisposable
     {
+        public static bool Supported => true;
+
         private Socket socket;
         private NanoEndPoint receiveEndPoint;
         private readonly int bufferSize;
@@ -25,7 +25,7 @@ namespace Mirage.Sockets.Udp
             Dispose();
         }
 
-        private void InitSocket()
+        private void CreateSocket()
         {
             socket = UDP.Create(bufferSize, bufferSize);
             UDP.SetDontFragment(socket);
@@ -37,7 +37,7 @@ namespace Mirage.Sockets.Udp
         {
             receiveEndPoint = (NanoEndPoint)endPoint;
 
-            InitSocket();
+            CreateSocket();
             var result = UDP.Bind(socket, ref receiveEndPoint.address);
             if (result != 0)
             {
@@ -61,7 +61,7 @@ namespace Mirage.Sockets.Udp
         {
             receiveEndPoint = (NanoEndPoint)endPoint;
 
-            InitSocket();
+            CreateSocket();
             var result = UDP.Connect(socket, ref receiveEndPoint.address);
             if (result != 0)
             {
@@ -89,3 +89,4 @@ namespace Mirage.Sockets.Udp
         }
     }
 }
+#endif

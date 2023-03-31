@@ -7,6 +7,13 @@ using UnityEngine;
 namespace Mirage
 {
     /// <summary>
+    /// Event that can be used to check authority
+    /// </summary>
+    /// <param name="hasAuthority">if the owner now has authority or if it was removed</param>
+    /// <param name="owner">the new or old owner. Owner value might be null on client side. But will be set on server</param>
+    public delegate void AuthorityChanged(NetworkIdentity identity, bool hasAuthority, INetworkPlayer owner);
+
+    /// <summary>
     /// Holds collection of spawned network objects
     /// <para>This class works on both server and client</para>
     /// </summary>
@@ -23,6 +30,14 @@ namespace Mirage
         /// Raised when object is unspawned or destroyed
         /// </summary>
         public event Action<NetworkIdentity> onUnspawn;
+
+        /// <summary>
+        /// Raised when authority is given or removed from an identity. It is invoked on both server and client
+        /// <para>
+        /// Can be used when you need to check for authorty on all objects, rather than adding an event to each object.
+        /// </para>
+        /// </summary>
+        public event AuthorityChanged OnAuthorityChanged;
 
         /// <summary>
         /// Time kept in this world
@@ -55,6 +70,11 @@ namespace Mirage
             // this can happen client side. we check for this case in TryGetValue above
             _spawnedObjects[netId] = identity;
             onSpawn?.Invoke(identity);
+
+            // owner might be set before World is
+            // so we need to invoke authChange now if the object has an owner
+            if (identity.Owner != null)
+                InvokeOnAuthorityChanged(identity, true, identity.Owner);
         }
 
         internal void RemoveIdentity(NetworkIdentity identity)
@@ -107,9 +127,47 @@ namespace Mirage
             _spawnedObjects.Clear();
         }
 
+        internal void InvokeOnAuthorityChanged(NetworkIdentity identity, bool hasAuthority, INetworkPlayer owner)
+        {
+            OnAuthorityChanged?.Invoke(identity, hasAuthority, owner);
+        }
+
         public NetworkWorld()
         {
 
+        }
+    }
+
+    public static class NetworkWorldExtensions
+    {
+        /// <summary>
+        /// adds an event handler, and invokes it on current objects in world
+        /// </summary>
+        /// <param name="action"></param>
+        public static void AddAndInvokeOnSpawn(this NetworkWorld world, Action<NetworkIdentity> action)
+        {
+            world.onSpawn += action;
+            foreach (var identity in world.SpawnedIdentities)
+            {
+                action.Invoke(identity);
+            }
+        }
+
+        /// <summary>
+        /// adds an event handler, and invokes it on current objects in world
+        /// </summary>
+        /// <param name="action"></param>
+        public static void AddAndInvokeOnAuthorityChanged(this NetworkWorld world, AuthorityChanged action)
+        {
+            world.OnAuthorityChanged += action;
+            foreach (var identity in world.SpawnedIdentities)
+            {
+                if (identity.HasAuthority)
+                {
+                    // owner might be null, but that is fine
+                    action.Invoke(identity, true, identity.Owner);
+                }
+            }
         }
     }
 }

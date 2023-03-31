@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Mirage.Collections;
 using Mirage.Logging;
 using Mirage.RemoteCalls;
@@ -8,11 +9,6 @@ using UnityEngine;
 
 namespace Mirage
 {
-    /// <summary>
-    /// Sync to everyone, or only to owner.
-    /// </summary>
-    public enum SyncMode { Observers, Owner }
-
     /// <summary>
     /// Base class which should be inherited by scripts which contain networking functionality.
     ///
@@ -28,22 +24,14 @@ namespace Mirage
     {
         private static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkBehaviour));
 
-        internal float _lastSyncTime;
+        // protected because it is ok for child classes to set this if they want
+        protected internal float _nextSyncTime;
 
-        // hidden because NetworkBehaviourInspector shows it only if has OnSerialize.
         /// <summary>
-        /// sync mode for OnSerialize
+        /// Sync settings for this NetworkBehaviour
+        /// <para>Settings will be hidden in inspector unless Behaviour has SyncVar or SyncObjects</para>
         /// </summary>
-        [HideInInspector] public SyncMode syncMode = SyncMode.Observers;
-
-        // hidden because NetworkBehaviourInspector shows it only if has OnSerialize.
-        /// <summary>
-        /// sync interval for OnSerialize (in seconds)
-        /// </summary>
-        [Tooltip("Time in seconds until next change is synchronized to the client. '0' means send immediately if changed. '0.5' means only send changes every 500ms.\n(This is for state synchronization like SyncVars, SyncLists, OnSerialize. Not for Cmds, Rpcs, etc.)")]
-        // [0,2] should be enough. anything >2s is too laggy anyway.
-        [Range(0, 2)]
-        [HideInInspector] public float syncInterval = 0.1f;
+        public SyncSettings SyncSettings = SyncSettings.Default;
 
         /// <summary>
         /// Returns true if this object is active on an active server.
@@ -127,7 +115,11 @@ namespace Mirage
         /// <returns></returns>
         public Id BehaviourId => new Id(this);
 
-        protected internal ulong SyncVarDirtyBits { get; private set; }
+        private ulong _syncVarDirtyBits;
+        private bool _anySyncObjectDirty;
+
+        protected internal ulong SyncVarDirtyBits => _syncVarDirtyBits;
+        protected internal bool AnySyncObjectDirty => _anySyncObjectDirty;
 
         private ulong _syncVarHookGuard;
 
@@ -256,8 +248,9 @@ namespace Mirage
 
         private void SyncObject_OnChange()
         {
-            if (IsServer)
+            if (SyncSettings.ShouldSyncFrom(Identity))
             {
+                _anySyncObjectDirty = true;
                 Server.SyncVarSender.AddDirtyObject(Identity);
             }
         }
@@ -272,64 +265,100 @@ namespace Mirage
         /// Used to set the behaviour as dirty, so that a network update will be sent for the object.
         /// these are masks, not bit numbers, ie. 0x004 not 2
         /// </summary>
-        /// <param name="dirtyBit">Bit mask to set.</param>
-        public void SetDirtyBit(ulong dirtyBit)
+        /// <param name="bitMask">Bit mask to set.</param>
+        public void SetDirtyBit(ulong bitMask)
         {
-            SyncVarDirtyBits |= dirtyBit;
-            if (IsServer)
-                Server.SyncVarSender.AddDirtyObject(Identity);
+            _syncVarDirtyBits |= bitMask;
+
+            if (SyncSettings.ShouldSyncFrom(Identity))
+                Identity.SyncVarSender.AddDirtyObject(Identity);
         }
+
+
+        /// <summary>
+        /// Used to clear dirty bit.
+        /// <para>Object may still be in dirty list, so will be checked in next update. but values in this mask will no longer be set until they are changed again</para>
+        /// </summary>
+        /// <param name="bitMask">Bit mask to set.</param>
+        public void ClearDirtyBit(ulong bitMask)
+        {
+            _syncVarDirtyBits &= ~bitMask;
+        }
+
 
         /// <summary>
         /// This clears all the dirty bits that were set on this script by SetDirtyBits();
         /// <para>This is automatically invoked when an update is sent for this object, but can be called manually as well.</para>
         /// </summary>
-        public void ClearAllDirtyBits()
+        [System.Obsolete("Use ClearShouldSync instead", true)] // renamed because ClearAllDirtyBits name is misleading because it also sets time
+        public void ClearAllDirtyBits(float now)
         {
-            _lastSyncTime = Time.time;
-            SyncVarDirtyBits = 0L;
+            ClearShouldSync(now);
+        }
+
+        public void ClearDirtyBits()
+        {
+            _syncVarDirtyBits = 0L;
 
             // flush all unsynchronized changes in syncobjects
-            // note: don't use List.ForEach here, this is a hot path
-            //   List.ForEach: 432b/frame
-            //   for: 231b/frame
-            for (var i = 0; i < syncObjects.Count; ++i)
+            for (var i = 0; i < syncObjects.Count; i++)
             {
                 syncObjects[i].Flush();
             }
+            _anySyncObjectDirty = false;
         }
 
-        private bool AnySyncObjectDirty()
+        /// <summary>
+        /// Clears dirty bits and sets the next sync time
+        /// </summary>
+        /// <param name="now"></param>
+        public void ClearShouldSync(float now)
         {
-            // note: don't use Linq here. 1200 networked objects:
-            //   Linq: 187KB GC/frame;, 2.66ms time
-            //   for: 8KB GC/frame; 1.28ms time
-            for (var i = 0; i < syncObjects.Count; ++i)
-            {
-                if (syncObjects[i].IsDirty)
-                {
-                    return true;
-                }
-            }
-            return false;
+            SyncSettings.UpdateTime(ref _nextSyncTime, now);
+            ClearDirtyBits();
         }
 
-        public bool IsDirty()
+        /// <summary>
+        /// True if this behaviour is dirty and it is time to sync
+        /// </summary>
+        /// <param name="time"></param>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool ShouldSync(float time)
         {
-            if (Time.time - _lastSyncTime >= syncInterval)
-            {
-                return SyncVarDirtyBits != 0L || AnySyncObjectDirty();
-            }
-            return false;
+            return AnyDirtyBits() && TimeToSync(time);
         }
+
+        /// <summary>
+        /// If it is time to sync based on last sync and <see cref="SyncSettings"/>
+        /// </summary>
+        /// <param name="time"></param>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TimeToSync(float time)
+        {
+            return time >= _nextSyncTime;
+        }
+
+        /// <summary>
+        /// Are any SyncVar or SyncObjects dirty
+        /// </summary>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool AnyDirtyBits()
+        {
+            return SyncVarDirtyBits != 0L || AnySyncObjectDirty;
+        }
+
+        // old version of ShouldSync, name isn't great so use 
+        [System.Obsolete("Use ShouldSync instead", true)]
+        public bool IsDirty(float time) => ShouldSync(time);
 
         // true if this component has data that has not been
         // synchronized.  Note that it may not synchronize
         // right away because of syncInterval
-        public bool StillDirty()
-        {
-            return SyncVarDirtyBits != 0L || AnySyncObjectDirty();
-        }
+        [System.Obsolete("Use AnyDirtyBits instead", true)] // duplicate method
+        public bool StillDirty() => AnyDirtyBits();
 
         /// <summary>
         /// Virtual function to override to send custom serialization data. The corresponding function to send serialization data is OnDeserialize().
@@ -344,23 +373,12 @@ namespace Mirage
         /// <returns>True if data was written.</returns>
         public virtual bool OnSerialize(NetworkWriter writer, bool initialState)
         {
-            bool objectWritten;
-            // if initialState: write all SyncVars.
-            // otherwise write dirtyBits+dirty SyncVars
-            if (initialState)
-            {
-                objectWritten = SerializeObjectsAll(writer);
-            }
-            else
-            {
-                objectWritten = SerializeObjectsDelta(writer);
-            }
+            var objectWritten = SerializeObjects(writer, initialState);
 
             var syncVarWritten = SerializeSyncVars(writer, initialState);
 
             return objectWritten || syncVarWritten;
         }
-
 
         /// <summary>
         /// Virtual function to override to receive custom serialization data. The corresponding function to send serialization data is OnSerialize().
@@ -369,15 +387,9 @@ namespace Mirage
         /// <param name="initialState">True if being sent initial state.</param>
         public virtual void OnDeserialize(NetworkReader reader, bool initialState)
         {
-            if (initialState)
-            {
-                DeSerializeObjectsAll(reader);
-            }
-            else
-            {
-                DeSerializeObjectsDelta(reader);
-            }
+            DeserializeObjects(reader, initialState);
 
+            _deserializeMask = 0;
             DeserializeSyncVars(reader, initialState);
         }
 
@@ -407,6 +419,15 @@ namespace Mirage
             //   read dirty SyncVars
         }
 
+        /// <summary>
+        /// mask from the most recent DeserializeSyncVars
+        /// </summary>
+        internal ulong _deserializeMask;
+        protected internal void SetDeserializeMask(ulong dirtyBit, int offset)
+        {
+            _deserializeMask |= dirtyBit << offset;
+        }
+
         internal ulong DirtyObjectBits()
         {
             ulong dirtyObjects = 0;
@@ -419,6 +440,21 @@ namespace Mirage
                 }
             }
             return dirtyObjects;
+        }
+
+        public bool SerializeObjects(NetworkWriter writer, bool initialState)
+        {
+            if (syncObjects.Count == 0)
+                return false;
+
+            if (initialState)
+            {
+                return SerializeObjectsAll(writer);
+            }
+            else
+            {
+                return SerializeObjectsDelta(writer);
+            }
         }
 
         public bool SerializeObjectsAll(NetworkWriter writer)
@@ -449,6 +485,21 @@ namespace Mirage
                 }
             }
             return dirty;
+        }
+
+        internal void DeserializeObjects(NetworkReader reader, bool initialState)
+        {
+            if (syncObjects.Count == 0)
+                return;
+
+            if (initialState)
+            {
+                DeSerializeObjectsAll(reader);
+            }
+            else
+            {
+                DeSerializeObjectsDelta(reader);
+            }
         }
 
         internal void DeSerializeObjectsAll(NetworkReader reader)

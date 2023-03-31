@@ -93,6 +93,8 @@ namespace Mirage
         public bool IsConnected => _connectState == ConnectState.Connected;
 
         public NetworkWorld World { get; private set; }
+        public SyncVarSender SyncVarSender { get; private set; }
+        private SyncVarReceiver _syncVarReceiver;
         public MessageHandler MessageHandler { get; private set; }
 
         /// <summary>
@@ -119,6 +121,8 @@ namespace Mirage
             _connectState = ConnectState.Connecting;
 
             World = new NetworkWorld();
+            SyncVarSender = new SyncVarSender();
+            _syncVarReceiver = new SyncVarReceiver(this, World);
 
             var endPoint = SocketFactory.GetConnectEndPoint(address, port);
             if (logger.LogEnabled()) logger.Log($"Client connecting to endpoint: {endPoint}");
@@ -280,7 +284,7 @@ namespace Mirage
         /// <param name="message"></param>
         /// <param name="channelId"></param>
         /// <returns>True if message was sent.</returns>
-        public void Send<T>(T message, int channelId = Channel.Reliable)
+        public void Send<T>(T message, Channel channelId = Channel.Reliable)
         {
             // Coburn, 2022-12-19: Fix NetworkClient.Send triggering NullReferenceException
             // This is caused by Send() being fired after the Player object is disposed or reset
@@ -293,7 +297,7 @@ namespace Mirage
             Player.Send(message, channelId);
         }
 
-        public void Send(ArraySegment<byte> segment, int channelId = Channel.Reliable)
+        public void Send(ArraySegment<byte> segment, Channel channelId = Channel.Reliable)
         {
             // For more information, see notes in Send<T> ...
             if (Player == null)
@@ -330,7 +334,11 @@ namespace Mirage
         }
 
         public void UpdateReceive() => _peer?.UpdateReceive();
-        public void UpdateSent() => _peer?.UpdateSent();
+        public void UpdateSent()
+        {
+            SyncVarSender?.Update();
+            _peer?.UpdateSent();
+        }
 
         internal void RegisterHostHandlers()
         {

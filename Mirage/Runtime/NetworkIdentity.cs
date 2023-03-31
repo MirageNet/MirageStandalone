@@ -187,6 +187,14 @@ namespace Mirage
         /// </summary>
         public NetworkWorld World { get; internal set; }
 
+        public SyncVarSender SyncVarSender { get; internal set; }
+
+        /// <summary>
+        /// True while applying spawn payload within OnDeserializeAll
+        /// <para>Can be used inside syncvar hooks to tell if object has just spawned</para>
+        /// </summary>
+        public bool InitialState { get; private set; }
+
         [Header("Runtime References")]
 
         /// <summary>
@@ -224,11 +232,20 @@ namespace Mirage
                     return;
 
                 if (_owner != null)
+                {
+                    // invoke OnAuthority for remove owner and then again if there is new owner
+                    // world can be null if owner is set before object is spawned
+                    World?.InvokeOnAuthorityChanged(this, false, _owner);
                     _owner.RemoveOwnedObject(this);
+                }
 
                 _owner = value;
                 _owner?.AddOwnedObject(this);
                 _onOwnerChanged.Invoke(_owner);
+
+                // only invoke again if new owner is not null
+                if (_owner != null)
+                    World?.InvokeOnAuthorityChanged(this, true, _owner);
             }
         }
 
@@ -243,6 +260,8 @@ namespace Mirage
                 {
                     var components = FindBehaviourForThisIdentity();
 
+                    // we write component index as byte
+                    // check if components are in byte.MaxRange just to be 100% sure that we avoid overflows
                     if (components.Length > byte.MaxValue)
                         throw new InvalidOperationException("Only 255 NetworkBehaviours are allowed per GameObject.");
 
@@ -545,11 +564,19 @@ namespace Mirage
         internal void CallStartAuthority()
         {
             _onAuthorityChanged.Invoke(true);
+
+            // dont invoke in host mode, server will invoke it when owner is changed
+            if (!IsServer)
+                World.InvokeOnAuthorityChanged(this, true, null);
         }
 
         internal void CallStopAuthority()
         {
             _onAuthorityChanged.Invoke(false);
+
+            // dont invoke in host mode, server will invoke it when owner is changed
+            if (!IsServer)
+                World.InvokeOnAuthorityChanged(this, false, null);
         }
 
         /// <summary>
@@ -612,8 +639,11 @@ namespace Mirage
         ///     </description></item>
         /// </list>
         /// </remarks>
-        private void OnSerialize(NetworkBehaviour comp, NetworkWriter writer, bool initialState)
+        private void OnSerialize(int i, NetworkBehaviour comp, NetworkWriter writer, bool initialState)
         {
+            // write index as byte [0..255]
+            writer.WriteByte((byte)i);
+
             comp.OnSerialize(writer, initialState);
             if (logger.LogEnabled()) logger.Log($"OnSerializeSafely written for '{comp.name}', Component '{comp.GetType()}', SceneId {SceneId:X}");
 
@@ -631,47 +661,61 @@ namespace Mirage
         /// <param name="observersWriter"></param>
         internal (int ownerWritten, int observersWritten) OnSerializeAll(bool initialState, NetworkWriter ownerWriter, NetworkWriter observersWriter)
         {
+            // how many times it written to (NOT BYTES)
             var ownerWritten = 0;
             var observersWritten = 0;
 
-            // check if components are in byte.MaxRange just to be 100% sure
-            // that we avoid overflows
+
             var components = NetworkBehaviours;
+            // store time as variable so we dont have to call property for each component
+            var now = Time.time;
 
             // serialize all components
             for (var i = 0; i < components.Length; ++i)
             {
-                // is this component dirty?
-                // -> always serialize if initialState so all components are included in spawn packet
-                // -> note: IsDirty() is false if the component isn't dirty or sendInterval isn't elapsed yet
                 var comp = components[i];
-                if (initialState || comp.IsDirty())
-                {
-                    if (logger.LogEnabled()) logger.Log($"OnSerializeAllSafely: '{name}', component '{comp.GetType()}', initial state: '{initialState}'");
 
+                // always sync for initial
+                // so check ShouldSync if initial is false
+                if (!initialState && !comp.ShouldSync(now))
+                    continue;
+
+                // check if we should be writing this components
+                if (!comp.SyncSettings.ShouldSyncFrom(this))
+                    continue;
+
+                if (logger.LogEnabled()) logger.Log($"OnSerializeAllSafely: '{name}', component '{comp.GetType()}', initial state: '{initialState}'");
+
+
+                // if only observers, then just write directly to observersWriter
+                if (comp.SyncSettings.ToObserverWriterOnly(this))
+                {
+                    OnSerialize(i, comp, observersWriter, initialState);
+                    observersWritten++;
+                }
+                // else write to ownerWriter (for owner or server) then coy into observer writer 
+                else
+                {
                     // remember start position in case we need to copy it into
                     // observers writer too
                     var startBitPosition = ownerWriter.BitPosition;
 
-                    // write index as byte [0..255]
-                    ownerWriter.WriteByte((byte)i);
-
-                    // serialize into ownerWriter first
-                    // (owner always gets everything!)
-                    OnSerialize(comp, ownerWriter, initialState);
+                    OnSerialize(i, comp, ownerWriter, initialState);
                     ownerWritten++;
 
-                    // copy into observersWriter too if SyncMode.Observers
-                    // -> we copy instead of calling OnSerialize again because
-                    //    we don't know what magic the user does in OnSerialize.
-                    // -> it's not guaranteed that calling it twice gets the
-                    //    same result
-                    // -> it's not guaranteed that calling it twice doesn't mess
-                    //    with the user's OnSerialize timing code etc.
-                    // => so we just copy the result without touching
-                    //    OnSerialize again
-                    if (comp.syncMode == SyncMode.Observers)
+                    // should copy to observer writer
+                    if (comp.SyncSettings.CopyToObservers(this))
                     {
+                        // copy into observersWriter too if SyncMode.Observers
+                        // -> faster than doing full serialize again
+                        // -> we copy instead of calling OnSerialize again because
+                        //    we don't know what magic the user does in OnSerialize.
+                        // -> it's not guaranteed that calling it twice gets the
+                        //    same result
+                        // -> it's not guaranteed that calling it twice doesn't mess
+                        //    with the user's OnSerialize timing code etc.
+                        // => so we just copy the result without touching
+                        //    OnSerialize again
                         var bitLength = ownerWriter.BitPosition - startBitPosition;
                         observersWriter.CopyFromWriter(ownerWriter, startBitPosition, bitLength);
                         observersWritten++;
@@ -688,18 +732,96 @@ namespace Mirage
         {
             foreach (var behaviour in NetworkBehaviours)
             {
-                if (behaviour.StillDirty())
+                if (behaviour.AnyDirtyBits())
                     return true;
             }
             return false;
         }
 
+        internal void OnDeserializeAll(NetworkReader reader, bool initialState)
+        {
+            // set InitialState before deserializing so that syncvar hooks and other methods can check it
+            InitialState = initialState;
+
+            PooledNetworkWriter observerWriter = null;
+            try
+            {
+                // deserialize all components that were received
+                var components = NetworkBehaviours;
+                // check if we can read at least 1 byte
+                while (reader.CanReadBytes(1))
+                {
+                    var startPosition = reader.BitPosition;
+
+                    // read & check index [0..255]
+                    var index = reader.ReadByte();
+                    ThrowIfIndexOutOfRange(components, index);
+
+                    // deserialize this component
+                    var comp = components[index];
+                    OnDeserialize(comp, reader, initialState);
+
+                    // check if owner values should be forwarded to observer
+                    CheckForwardToObservers(comp, reader, startPosition, ref observerWriter);
+                }
+
+                if (observerWriter != null)
+                    ForwardToObservers(observerWriter);
+            }
+            finally
+            {
+                // make sure writer is released even if there is Exception
+                // note: we dont send message here, we send inside try.
+                //       we dont want to send a message if an exception was thrown while deserializing
+                observerWriter?.Release();
+
+                // reset flag at end,
+                // just incase people are checking initial at wrong time, in that case we want it to be false
+                InitialState = false;
+            }
+        }
+
         private void OnDeserialize(NetworkBehaviour comp, NetworkReader reader, bool initialState)
         {
+            // check we are allow to read for this comp
+            ThrowIfInvalidSendToServer(comp);
+
             comp.OnDeserialize(reader, initialState);
 
             // check if Barrier is at end of Deserialize, if it is then the Deserialize was likely a success
             var barrierData = reader.ReadByte();
+            ThrowIfBarrierByteIncorrect(comp, barrierData);
+
+            // clear bits, local values would have been overwritten if previously changed
+            // do this after Deserialize is successful, we dont want too clear bits if there was an exception
+            comp.ClearDirtyBit(comp._deserializeMask);
+        }
+
+        private void ThrowIfIndexOutOfRange(NetworkBehaviour[] components, byte index)
+        {
+            if (index >= components.Length)
+            {
+                throw new DeserializeFailedException($"Deserialization failure component index out of range on networked object '{name}' (NetId {NetId}, SceneId {SceneId:X})." +
+                    $" Possible Reasons:\n" +
+                    $"  * Component added at runtime causing behaviour array to be mismatched\n" +
+                    $"  * out dated version of prefab on either server or client, Try rebuilding both.\n\n");
+            }
+        }
+        private void ThrowIfInvalidSendToServer(NetworkBehaviour comp)
+        {
+            // if we are server, but SyncSettings is not To.Server, then we should not be reading or appling any values
+            // this is a problem we can't resolve (because we dont known length
+            // so we have to throw
+            var notToServer = (comp.SyncSettings.To & SyncTo.Server) == 0;
+            if (notToServer && IsServer)
+            {
+                throw new DeserializeFailedException($"Invalid sync settings on '{comp.GetType()}' on networked object '{name}' (NetId {NetId}, SceneId {SceneId:X})." +
+                   $" Possible Reason: SyncSettings was changed to SyncTo.Server at runtime, but not udpated on server.\n" +
+                   $"Ensure SyncSettings is same on both Server and Client, this may rebuilding both.");
+            }
+        }
+        private void ThrowIfBarrierByteIncorrect(NetworkBehaviour comp, byte barrierData)
+        {
             if (barrierData != BARRIER)
             {
                 throw new DeserializeFailedException($"Deserialization failure for component '{comp.GetType()}' on networked object '{name}' (NetId {NetId}, SceneId {SceneId:X})." +
@@ -712,30 +834,47 @@ namespace Mirage
             }
         }
 
-        internal void OnDeserializeAll(NetworkReader reader, bool initialState)
+        private unsafe void CheckForwardToObservers(NetworkBehaviour comp, NetworkReader reader, int startPosition, ref PooledNetworkWriter writer)
         {
-            // deserialize all components that were received
-            var components = NetworkBehaviours;
-            // check if we can read at least 1 byte
-            while (reader.CanReadBytes(1))
-            {
-                // todo replace index with bool for if next component in order has changed or not
-                //      the index below was an alternative to a mask, but now we have bitpacking we can just use a bool for each NB index
-                // read & check index [0..255]
-                var index = reader.ReadByte();
-                if (index < components.Length)
-                {
-                    // deserialize this component
-                    OnDeserialize(components[index], reader, initialState);
-                }
-            }
+            // if we are not server, we can't forward to anywhere
+            if (!comp.IsServer)
+                return;
+
+            var toObserver = (comp.SyncSettings.To & SyncTo.ObserversOnly) != 0;
+            if (!toObserver)
+                return;
+
+            // then copy reader data into writer that will be send at end of OnDeserializeAll
+            // we need to copy into writer instead of all using ther whole segment because only some component might have To.Observer
+
+            // if we dont have writer yet, get now
+            if (writer == null)
+                writer = NetworkWriterPool.GetWriter();
+
+            // copy the data we just read for this component into writer
+            var endPosition = reader.BitPosition;
+            var length = endPosition - startPosition;
+            writer.CopyFromPointer(reader.BufferPointer, startPosition, length);
         }
+
+        private void ForwardToObservers(NetworkWriter writer)
+        {
+            var varsMessage = new UpdateVarsMessage
+            {
+                netId = NetId,
+                payload = writer.ToArraySegment(),
+            };
+
+            SendToRemoteObservers(varsMessage, includeOwner: false);
+        }
+
 
         internal void SetServerValues(NetworkServer networkServer, ServerObjectManager serverObjectManager)
         {
             Server = networkServer;
             ServerObjectManager = serverObjectManager;
             World = networkServer.World;
+            SyncVarSender = networkServer.SyncVarSender;
             Client = networkServer.LocalClient;
         }
 
@@ -749,7 +888,12 @@ namespace Mirage
             HasAuthority = msg.isOwner;
             ClientObjectManager = clientObjectManager;
             Client = ClientObjectManager.Client;
-            World = Client.World;
+
+            if (!IsServer)
+            {
+                World = Client.World;
+                SyncVarSender = Client.SyncVarSender;
+            }
         }
 
         /// <summary>
@@ -1026,52 +1170,6 @@ namespace Mirage
             _onStopServer.Reset();
         }
 
-        internal void SendUpdateVarsMessage()
-        {
-            // one writer for owner, one for observers
-            using (PooledNetworkWriter ownerWriter = NetworkWriterPool.GetWriter(), observersWriter = NetworkWriterPool.GetWriter())
-            {
-                // serialize all the dirty components and send
-                (var ownerWritten, var observersWritten) = OnSerializeAll(false, ownerWriter, observersWriter);
-                if (ownerWritten > 0 || observersWritten > 0)
-                {
-                    var varsMessage = new UpdateVarsMessage
-                    {
-                        netId = NetId
-                    };
-
-                    // send ownerWriter to owner
-                    // (only if we serialized anything for owner)
-                    // (only if there is a connection (e.g. if not a monster),
-                    //  and if connection is ready because we use SendToReady
-                    //  below too)
-                    if (ownerWritten > 0)
-                    {
-                        varsMessage.payload = ownerWriter.ToArraySegment();
-                        if (Owner != null && Owner.SceneIsReady)
-                            Owner.Send(varsMessage);
-                    }
-
-                    // send observersWriter to everyone but owner
-                    // (only if we serialized anything for observers)
-                    if (observersWritten > 0)
-                    {
-                        varsMessage.payload = observersWriter.ToArraySegment();
-                        SendToRemoteObservers(varsMessage, false);
-                    }
-
-                    // clear dirty bits only for the components that we serialized
-                    // DO NOT clean ALL component's dirty bits, because
-                    // components can have different syncIntervals and we don't
-                    // want to reset dirty bits for the ones that were not
-                    // synced yet.
-                    // (we serialized only the IsDirty() components, or all of
-                    //  them if initialState. clearing the dirty ones is enough.)
-                    ClearDirtyComponentsDirtyBits();
-                }
-            }
-        }
-
         private static readonly List<INetworkPlayer> connectionsExcludeSelf = new List<INetworkPlayer>(100);
 
         /// <summary>
@@ -1081,7 +1179,7 @@ namespace Mirage
         /// <param name="msg">The message to deliver to clients.</param>
         /// <param name="includeOwner">Should the owner should receive this message too?</param>
         /// <param name="channelId">The transport channel that should be used to deliver the message. Default is the Reliable channel.</param>
-        internal void SendToRemoteObservers<T>(T msg, bool includeOwner = true, int channelId = Channel.Reliable)
+        internal void SendToRemoteObservers<T>(T msg, bool includeOwner = true, Channel channelId = Channel.Reliable)
         {
             if (logger.LogEnabled()) logger.Log($"Server.SendToObservers: Sending message Id: {typeof(T)}");
 
@@ -1105,27 +1203,36 @@ namespace Mirage
         }
 
         /// <summary>
-        /// clear all component's dirty bits no matter what
+        /// Clears dirty bits and sets the next sync time on each Component 
         /// </summary>
-        internal void ClearAllComponentsDirtyBits()
+        internal void ClearShouldSync()
         {
+            // store time as variable so we dont have to call property for each component
+            var now = Time.time;
+
             foreach (var comp in NetworkBehaviours)
             {
-                comp.ClearAllDirtyBits();
+                comp.ClearShouldSync(now);
             }
         }
 
         /// <summary>
-        /// Clear only dirty component's dirty bits. ignores components which
-        /// may be dirty but not ready to be synced yet (because of syncInterval)
+        /// Clear dirty bits of Component only if it is after syncInterval
+        /// <para>
+        /// Note: generally this is called after syncing to clear dirty bits of components we just synced
+        /// </para>
         /// </summary>
-        internal void ClearDirtyComponentsDirtyBits()
+        internal void ClearShouldSyncDirtyOnly()
         {
+            // store time as variable so we dont have to call property for each component
+            var now = Time.time;
+
             foreach (var comp in NetworkBehaviours)
             {
-                if (comp.IsDirty())
+                // todo this seems weird, should we be clearing this somewhere else?
+                if (comp.TimeToSync(now))
                 {
-                    comp.ClearAllDirtyBits();
+                    comp.ClearShouldSync(now);
                 }
             }
         }
