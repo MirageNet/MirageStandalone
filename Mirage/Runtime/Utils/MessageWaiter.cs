@@ -33,7 +33,13 @@ namespace Mirage
 
         public async UniTask<(bool disconnected, T message)> WaitAsync()
         {
-            await UniTask.WaitUntil(() => _received || !_client.IsConnected);
+            while (true)
+            {
+                if (_received || !_client.IsConnected)
+                    break;
+
+                await UniTask.Yield();
+            }
 
             // check _client.IsConnected again here, incase we disconnected after _receiving 
             return (!_client.IsConnected, _message);
