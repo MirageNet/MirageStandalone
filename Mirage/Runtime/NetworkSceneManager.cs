@@ -823,7 +823,13 @@ namespace Mirage
                     SceneLoadingAsyncOperationInfo.allowSceneActivation = false;
                 }
 
-                await SceneLoadingAsyncOperationInfo.ToUniTask();
+                // TODO: Fix this!!                
+                // Error CS1929: 'AsyncOperation' does not contain a definition for 'ToUniTask' and the best extension method
+                // overload 'CancellationTokenExtensions.ToUniTask(CancellationToken)' requires a receiver of type
+                // 'System.Threading.CancellationToken'
+                // await SceneLoadingAsyncOperationInfo.ToUniTask();
+                await SceneLoadingAsyncOperationInfo;
+
                 AssertSceneIsActive(scenePath);
 
                 CompleteLoadingScene(SceneManager.GetActiveScene(), SceneOperation.Normal);
@@ -849,7 +855,9 @@ namespace Mirage
                 ? SceneManager.LoadSceneAsync(scenePath, sceneLoadParameters.Value)
                 : SceneManager.LoadSceneAsync(scenePath, LoadSceneMode.Additive);
 
-            await SceneLoadingAsyncOperationInfo.ToUniTask();
+            // TODO: Fix this!! - See line 826
+            // await SceneLoadingAsyncOperationInfo.ToUniTask();
+            await SceneLoadingAsyncOperationInfo;
 
             var scene = SceneManager.GetSceneAt(SceneManager.sceneCount - 1);
 
@@ -872,7 +880,9 @@ namespace Mirage
             var scene = SceneManager.GetSceneByPath(scenePath);
             if (scene.IsValid())
             {
-                await SceneManager.UnloadSceneAsync(scenePath, UnloadSceneOptions.UnloadAllEmbeddedSceneObjects).ToUniTask();
+                // TODO: Fix this!!
+                // await SceneManager.UnloadSceneAsync(scenePath, UnloadSceneOptions.UnloadAllEmbeddedSceneObjects).ToUniTask();
+                await SceneManager.UnloadSceneAsync(scenePath, UnloadSceneOptions.UnloadAllEmbeddedSceneObjects);
 
                 CompleteLoadingScene(scene, SceneOperation.UnloadAdditive);
             }
@@ -891,7 +901,9 @@ namespace Mirage
             // Ensure additive scene is actually loaded
             if (scene.IsValid())
             {
-                await SceneManager.UnloadSceneAsync(scene, UnloadSceneOptions.UnloadAllEmbeddedSceneObjects).ToUniTask();
+                // TODO: Fix this!!
+                // await SceneManager.UnloadSceneAsync(scene, UnloadSceneOptions.UnloadAllEmbeddedSceneObjects).ToUniTask();
+                await SceneManager.UnloadSceneAsync(scene, UnloadSceneOptions.UnloadAllEmbeddedSceneObjects);
 
                 CompleteLoadingScene(scene, SceneOperation.UnloadAdditive);
             }
