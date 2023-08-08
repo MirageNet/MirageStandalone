@@ -24,10 +24,10 @@
   </PropertyGroup>
   <ItemGroup>
     <None Include="./mirage3.png" Pack="true" PackagePath="" />
-    <None Include="./README.md" Pack="true" PackagePath=""/>
-    <Content Include="$(MirageCodeGenExe)/**/*.dll" Pack="true" PackagePath="CodeGen" Condition="Exists($(MirageCodeGenExe))"/>
-    <Content Include="$(MirageCodeGenExe)/**/*.exe" Pack="true" PackagePath="CodeGen" Condition="Exists($(MirageCodeGenExe))"/>
-    <Content Include="$(MirageCodeGenExe)/**/*.json" Pack="true" PackagePath="CodeGen" Condition="Exists($(MirageCodeGenExe))"/>
+    <None Include="./README.md" Pack="true" PackagePath="" />
+    <Content Include="$(MirageCodeGenExe)/**/*.dll" Pack="true" PackagePath="CodeGen" Condition="Exists($(MirageCodeGenExe))" />
+    <Content Include="$(MirageCodeGenExe)/**/*.exe" Pack="true" PackagePath="CodeGen" Condition="Exists($(MirageCodeGenExe))" />
+    <Content Include="$(MirageCodeGenExe)/**/*.json" Pack="true" PackagePath="CodeGen" Condition="Exists($(MirageCodeGenExe))" />
   </ItemGroup>
 
   <ItemGroup>
@@ -49,18 +49,23 @@
       <Pack>true</Pack>
     </Content>
   </ItemGroup>
+  
+  
+  <ItemGroup>
+    <PackageReference Include="UniTask" Version="2.3.3" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Mirage.Logging\Mirage.Logging.csproj">
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
-    <ProjectReference Include="..\Mirage.SocketLayer\Mirage.SocketLayer.csproj" >
+    <ProjectReference Include="..\Mirage.SocketLayer\Mirage.SocketLayer.csproj">
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
-    <ProjectReference Include="..\Mirage.Sockets\Mirage.Sockets.csproj" >
+    <ProjectReference Include="..\Mirage.Sockets\Mirage.Sockets.csproj">
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
-    <ProjectReference Include="..\UnityEngine\FakeUnityEngine.csproj" >
+    <ProjectReference Include="..\UnityEngine\FakeUnityEngine.csproj">
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
   </ItemGroup>
