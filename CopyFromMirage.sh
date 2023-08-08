@@ -27,6 +27,7 @@ CopyScripts "$MiragePath/Assets/Mirage/Runtime/Serialization" "./Mirage/Runtime/
 CopyScripts "$MiragePath/Assets/Mirage/Runtime/Serialization/Packers" "./Mirage/Runtime/Serialization/Packers"
 
 # 146.2.1
+CopyScripts "$MiragePath/Assets/Mirage/Runtime/Extensions" "./Mirage/Runtime/Extensions"
 CopyScripts "$MiragePath/Assets/Mirage/Runtime/Authentication" "./Mirage/Runtime/Authentication"
 CopyScripts "$MiragePath/Assets/Mirage/Runtime/Utils" "./Mirage/Runtime/Utils"
 
