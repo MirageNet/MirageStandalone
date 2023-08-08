@@ -38,6 +38,12 @@ CopyScripts "$MiragePath/Assets/Mirage/Weaver/Processors/NetworkBehaviour" "./Mi
 CopyScripts "$MiragePath/Assets/Mirage/Weaver/Processors/SyncVars" "./Mirage.CodeGen/Weaver/Processors/SyncVars"
 CopyScripts "$MiragePath/Assets/Mirage/Weaver/Serialization" "./Mirage.CodeGen/Weaver/Serialization"
 
+# 146.2.1
+CopyScripts "$MiragePath/Assets/Mirage/Weaver/Mirage.CecilExtensions" "./Mirage.CodeGen/Weaver/Mirage.CecilExtensions"
+CopyScripts "$MiragePath/Assets/Mirage/Weaver/Mirage.CecilExtensions/Extensions" "./Mirage.CodeGen/Weaver/Mirage.CecilExtensions/Extensions"
+CopyScripts "$MiragePath/Assets/Mirage/Weaver/Mirage.CecilExtensions/Logging" "./Mirage.CodeGen/Weaver/Mirage.CecilExtensions/Logging"
+CopyScripts "$MiragePath/Assets/Mirage/Weaver/Mirage.CecilExtensions/UnityCodeGen" "./Mirage.CodeGen/Weaver/Mirage.CecilExtensions/UnityCodeGen"
+
 cp "$MiragePath/Assets/Mirage/Runtime/Logging/LogFactory.cs" "./Mirage.Logging/Logging/"
 sed -i 's/new Logger(createLoggerForType.Invoke(loggerName))/new StandaloneLogger()/g' ./Mirage.Logging/Logging/LogFactory.cs
 
