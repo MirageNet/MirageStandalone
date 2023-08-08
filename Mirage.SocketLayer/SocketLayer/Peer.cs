@@ -154,18 +154,6 @@ namespace Mirage.SocketLayer
             }
         }
 
-        internal void SendUnreliable(Connection connection, byte[] packet, int offset, int length)
-        {
-            using (var buffer = _bufferPool.Take())
-            {
-                Buffer.BlockCopy(packet, offset, buffer.array, 1, length);
-                // set header
-                buffer.array[0] = (byte)PacketType.Unreliable;
-
-                Send(connection, buffer.array, length + 1);
-            }
-        }
-
         internal void SendCommandUnconnected(IEndPoint endPoint, Commands command, byte? extra = null)
         {
             using (var buffer = _bufferPool.Take())
@@ -283,11 +271,11 @@ namespace Mirage.SocketLayer
         private void HandleMessage(Connection connection, Packet packet)
         {
             // ingore message of invalid size
-            if (!packet.IsValidSize())
+            if (!connection.IsValidSize(packet))
             {
                 if (_logger.Enabled(LogType.Log))
                 {
-                    _logger.Log($"Receive from {connection} was too small");
+                    _logger.Log($"Receive from {connection} was too small type:{packet.Type}, size:{packet.Length}");
                 }
                 return;
             }
@@ -383,13 +371,13 @@ namespace Mirage.SocketLayer
             if (!Validate(packet)) { return; }
 
 
-            if (!_connectKeyValidator.Validate(packet.Buffer.array))
-            {
-                RejectConnectionWithReason(endPoint, RejectReason.KeyInvalid);
-            }
-            else if (AtMaxConnections())
+            if (AtMaxConnections())
             {
                 RejectConnectionWithReason(endPoint, RejectReason.ServerFull);
+            }
+            else if (!_connectKeyValidator.Validate(packet.Buffer.array))
+            {
+                RejectConnectionWithReason(endPoint, RejectReason.KeyInvalid);
             }
             // todo do other security stuff here:
             // - white/black list for endpoint?
@@ -435,7 +423,17 @@ namespace Mirage.SocketLayer
             // this is so that we can re-use the endpoint (reduces alloc) for receive and not worry about changing internal data needed for each connection
             var endPoint = newEndPoint?.CreateCopy();
 
-            var connection = new Connection(this, endPoint, _dataHandler, _config, _maxPacketSize, _time, _bufferPool, _logger, _metrics);
+            Connection connection;
+            if (_config.DisableReliableLayer)
+            {
+                connection = new NoReliableConnection(this, endPoint, _dataHandler, _config, _maxPacketSize, _time, _logger, _metrics);
+            }
+            else
+            {
+                connection = new ReliableConnection(this, endPoint, _dataHandler, _config, _maxPacketSize, _time, _bufferPool, _logger, _metrics);
+            }
+
+
             connection.SetReceiveTime();
             _connections.Add(endPoint, connection);
             return connection;
@@ -542,7 +540,12 @@ namespace Mirage.SocketLayer
 
         private void HandleConnectionDisconnect(Connection connection, Packet packet)
         {
-            var reason = (DisconnectReason)packet.Buffer.array[2];
+            DisconnectReason reason;
+            if (packet.Length == 3)
+                reason = (DisconnectReason)packet.Buffer.array[2];
+            else
+                reason = DisconnectReason.None;
+
             connection.Disconnect(reason, false);
         }
 

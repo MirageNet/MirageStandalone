@@ -7,21 +7,20 @@ using Mirage.Logging;
 using Mirage.RemoteCalls;
 using Mirage.Serialization;
 using UnityEngine;
-using UnityEngine.SceneManagement;
-using UnityEngine.Serialization;
 
 namespace Mirage
 {
     [AddComponentMenu("Network/ClientObjectManager")]
+    [HelpURL("https://miragenet.github.io/Mirage/docs/reference/Mirage/ClientObjectManager")]
     [DisallowMultipleComponent]
     public class ClientObjectManager : MonoBehaviour
     {
         private static readonly ILogger logger = LogFactory.GetLogger(typeof(ClientObjectManager));
 
-        [FormerlySerializedAs("client")]
-        public NetworkClient Client;
-        [FormerlySerializedAs("networkSceneManager")]
-        public NetworkSceneManager NetworkSceneManager;
+        internal RpcHandler _rpcHandler;
+
+        private NetworkClient _client;
+        public NetworkClient Client => _client;
 
         /// <summary>
         /// List of prefabs that will be registered with the spawning system.
@@ -53,68 +52,14 @@ namespace Mirage
         /// </summary>
         public readonly Dictionary<ulong, NetworkIdentity> spawnableObjects = new Dictionary<ulong, NetworkIdentity>();
 
-        internal ServerObjectManager _serverObjectManager;
-
-        public void Start()
+        internal void ClientStarted(NetworkClient client)
         {
-            if (Client != null)
-            {
-                Client.Connected.AddListener(OnClientConnected);
-                Client.Disconnected.AddListener(OnClientDisconnected);
+            if (_client != null && _client != client)
+                throw new InvalidOperationException($"ClientObjectManager already in use by another NetworkClient, current:{_client}, new:{client}");
 
-                if (NetworkSceneManager != null)
-                    NetworkSceneManager.OnClientFinishedSceneChange.AddListener(OnFinishedSceneChange);
-            }
-            else
-            {
-                Debug.LogWarning($"Client is null for ClientObjectManager on {gameObject.name}");
-            }
-        }
+            _client = client;
+            _client.Disconnected.AddListener(OnClientDisconnected);
 
-#if UNITY_EDITOR
-        private readonly Dictionary<int, NetworkIdentity> _validateCache = new Dictionary<int, NetworkIdentity>();
-
-        private void OnValidate()
-        {
-            // clear before just incase it didn't clear last time
-            _validateCache.Clear();
-
-            ValidatePrefabs(spawnPrefabs);
-            ValidatePrefabs(NetworkPrefabs?.Prefabs);
-
-            // clear after so unity can release prefabs if it wants to
-            _validateCache.Clear();
-        }
-
-        private void ValidatePrefabs(IEnumerable<NetworkIdentity> prefabs)
-        {
-            if (prefabs == null)
-                return;
-
-            foreach (var prefab in prefabs)
-            {
-                if (prefab == null)
-                    continue;
-
-                var hash = prefab.PrefabHash;
-                if (_validateCache.TryGetValue(hash, out var existing))
-                {
-                    if (prefab == existing)
-                        continue;
-
-                    var pathA = UnityEditor.AssetDatabase.GetAssetPath(prefab);
-                    var pathB = UnityEditor.AssetDatabase.GetAssetPath(existing);
-                    logger.Assert(prefab.PrefabHash == existing.PrefabHash);
-                    logger.LogError($"2 prefabs had the same hash:'{hash}', A:'{prefab.name}' B:'{existing.name}'. Path A:{pathA} Path B:{pathB}");
-                }
-
-                _validateCache[hash] = prefab;
-            }
-        }
-#endif
-
-        private void OnClientConnected(INetworkPlayer player)
-        {
             RegisterPrefabs(spawnPrefabs, true);
             RegisterPrefabs(NetworkPrefabs?.Prefabs, true);
 
@@ -122,7 +67,7 @@ namespace Mirage
             // if user changes scenes without NetworkSceneManager then they will need to manually call it again
             PrepareToSpawnSceneObjects();
 
-            if (Client.IsLocalClient)
+            if (_client.IsLocalClient)
             {
                 RegisterHostHandlers();
             }
@@ -136,35 +81,29 @@ namespace Mirage
         {
             ClearSpawners();
             DestroyAllClientObjects();
-        }
 
-        private void OnFinishedSceneChange(Scene scene, SceneOperation sceneOperation)
-        {
-            Client.World.RemoveDestroyedObjects();
-
-            PrepareToSpawnSceneObjects();
+            // reset for next run
+            _client.Disconnected.RemoveListener(OnClientDisconnected);
+            _client = null;
         }
 
         internal void RegisterHostHandlers()
         {
-            Client.MessageHandler.RegisterHandler<ObjectDestroyMessage>(msg => { });
-            Client.MessageHandler.RegisterHandler<ObjectHideMessage>(msg => { });
-            Client.MessageHandler.RegisterHandler<SpawnMessage>(OnHostClientSpawn);
-            Client.MessageHandler.RegisterHandler<RemoveAuthorityMessage>(OnRemoveAuthority);
-            Client.MessageHandler.RegisterHandler<RemoveCharacterMessage>(OnRemoveCharacter);
-            Client.MessageHandler.RegisterHandler<ServerRpcReply>(msg => { });
-            Client.MessageHandler.RegisterHandler<RpcMessage>(msg => { });
+            _client.MessageHandler.RegisterHandler<ObjectDestroyMessage>(msg => { });
+            _client.MessageHandler.RegisterHandler<ObjectHideMessage>(msg => { });
+            _client.MessageHandler.RegisterHandler<SpawnMessage>(OnHostClientSpawn);
+            _client.MessageHandler.RegisterHandler<RemoveAuthorityMessage>(OnRemoveAuthority);
+            _client.MessageHandler.RegisterHandler<RemoveCharacterMessage>(OnRemoveCharacter);
         }
 
         internal void RegisterMessageHandlers()
         {
-            Client.MessageHandler.RegisterHandler<ObjectDestroyMessage>(OnObjectDestroy);
-            Client.MessageHandler.RegisterHandler<ObjectHideMessage>(OnObjectHide);
-            Client.MessageHandler.RegisterHandler<SpawnMessage>(OnSpawn);
-            Client.MessageHandler.RegisterHandler<RemoveAuthorityMessage>(OnRemoveAuthority);
-            Client.MessageHandler.RegisterHandler<RemoveCharacterMessage>(OnRemoveCharacter);
-            Client.MessageHandler.RegisterHandler<ServerRpcReply>(OnServerRpcReply);
-            Client.MessageHandler.RegisterHandler<RpcMessage>(OnRpcMessage);
+            _client.MessageHandler.RegisterHandler<ObjectDestroyMessage>(OnObjectDestroy);
+            _client.MessageHandler.RegisterHandler<ObjectHideMessage>(OnObjectHide);
+            _client.MessageHandler.RegisterHandler<SpawnMessage>(OnSpawn);
+            _client.MessageHandler.RegisterHandler<RemoveAuthorityMessage>(OnRemoveAuthority);
+            _client.MessageHandler.RegisterHandler<RemoveCharacterMessage>(OnRemoveCharacter);
+            _rpcHandler = new RpcHandler(_client.MessageHandler, _client.World, RpcInvokeType.ClientRpc);
         }
 
         private bool ConsiderForSpawning(NetworkIdentity identity)
@@ -179,12 +118,12 @@ namespace Mirage
         // this is called from message handler for Owner message
         internal void InternalAddCharacter(NetworkIdentity identity)
         {
-            if (!Client.Active)
+            if (!_client.Active)
             {
                 throw new InvalidOperationException("Can't add character while client is not active");
             }
 
-            Client.Player.Identity = identity;
+            _client.Player.Identity = identity;
         }
 
         /// <summary>
@@ -233,23 +172,6 @@ namespace Mirage
             }
         }
 
-        /// <summary>
-        /// Find the registered prefab for this asset id.
-        /// Useful for debuggers
-        /// </summary>
-        /// <param name="prefabHash">asset id of the prefab</param>
-        /// <returns>true if prefab was registered</returns>
-        /// <exception cref="ArgumentException">Thrown when <paramref name="prefabHash"/> is 0</exception>
-        /// <exception cref="SpawnObjectException">Thrown prefab </exception>
-        [System.Obsolete("use GetSpawnHandler instead")]
-        public NetworkIdentity GetPrefab(int prefabHash)
-        {
-            var handler = GetSpawnHandler(prefabHash);
-            if (handler.Prefab == null)
-                ThrowMissingHandler(prefabHash);
-
-            return handler.Prefab;
-        }
 
         /// <summary>
         /// Find the registered or dynamic handler for <paramref name="prefabHash"/>
@@ -491,7 +413,10 @@ namespace Mirage
 
         private void UnSpawn(NetworkIdentity identity)
         {
-            logger.Assert(!Client.IsLocalClient, "UnSpawn should not be called in host mode");
+            // have to store netid, so we can remove it from world, this is because NetworkReset will clear it
+            var netId = identity.NetId;
+
+            logger.Assert(!_client.IsLocalClient, "UnSpawn should not be called in host mode");
             // it is useful to remove authority when destroying the object
             // this can be useful to clean up stuff after a local player is destroyed
             // call before StopClient, but dont reset the HasAuthority bool, people might want to use HasAuthority from stopclient or destroy
@@ -503,6 +428,9 @@ namespace Mirage
             if (_handlers.TryGetValue(identity.PrefabHash, out var handler) && handler.UnspawnHandler != null)
             {
                 handler.UnspawnHandler.Invoke(identity);
+                // need to call reset incase user puts object in pool and wants to re-use it later
+                // it needs to be dont after the handler so user still has access to network fields while cleaning it up
+                identity.NetworkReset();
             }
             else if (!identity.IsSceneObject)
             {
@@ -515,7 +443,7 @@ namespace Mirage
                 spawnableObjects[identity.SceneId] = identity;
             }
 
-            Client.World.RemoveIdentity(identity);
+            _client.World.RemoveIdentity(netId);
         }
 
         /// <summary>
@@ -525,7 +453,7 @@ namespace Mirage
         public void DestroyAllClientObjects()
         {
             // dont destroy objects if we are server
-            if (Client.IsLocalClient)
+            if (_client.IsLocalClient)
             {
                 if (logger.LogEnabled()) logger.Log("Skipping DestroyAllClientObjects because we are host client");
                 return;
@@ -533,7 +461,7 @@ namespace Mirage
 
             // create copy so they can be removed inside loop
             // allocation here are fine because is part of clean up
-            var all = Client.World.SpawnedIdentities.ToArray();
+            var all = _client.World.SpawnedIdentities.ToArray();
 
             foreach (var identity in all)
             {
@@ -542,29 +470,24 @@ namespace Mirage
                     UnSpawn(identity);
                 }
             }
-            Client.World.ClearSpawnedObjects();
+            _client.World.ClearSpawnedObjects();
         }
 
         private void ApplySpawnPayload(NetworkIdentity identity, SpawnMessage msg)
         {
-            if (msg.prefabHash.HasValue)
-                identity.PrefabHash = msg.prefabHash.Value;
-
-            if (!identity.gameObject.activeSelf)
-            {
-                identity.gameObject.SetActive(true);
-            }
+            if (msg.PrefabHash.HasValue)
+                identity.PrefabHash = msg.PrefabHash.Value;
 
             identity.SetClientValues(this, msg);
 
-            if (msg.isLocalPlayer)
+            if (msg.IsLocalPlayer)
                 InternalAddCharacter(identity);
 
             // deserialize components if any payload
             // (Count is 0 if there were no components)
-            if (msg.payload.Count > 0)
+            if (msg.Payload.Count > 0)
             {
-                using (var payloadReader = NetworkReaderPool.GetReader(msg.payload, Client.World))
+                using (var payloadReader = NetworkReaderPool.GetReader(msg.Payload, _client.World))
                 {
                     identity.OnDeserializeAll(payloadReader, true);
                 }
@@ -578,24 +501,24 @@ namespace Mirage
 
         internal void OnSpawn(SpawnMessage msg)
         {
-            if (msg.prefabHash == null && msg.sceneId == null)
-                throw new SpawnObjectException($"Empty prefabHash and sceneId for netId: {msg.netId}");
+            if (msg.PrefabHash == null && msg.SceneId == null)
+                throw new SpawnObjectException($"Empty prefabHash and sceneId for netId: {msg.NetId}");
 
-            if (logger.LogEnabled()) logger.Log($"Client spawn handler instantiating netId={msg.netId} prefabHash={msg.prefabHash:X} sceneId={msg.sceneId:X} pos={msg.position}");
+            if (logger.LogEnabled()) logger.Log($"[ClientObjectManager] Spawn: {msg}");
 
             // was the object already spawned?
-            var existing = Client.World.TryGetIdentity(msg.netId, out var identity);
+            var existing = _client.World.TryGetIdentity(msg.NetId, out var identity);
 
             if (!existing)
             {
                 //is the object on the prefab or scene object lists?
-                if (msg.sceneId.HasValue)
+                if (msg.SceneId.HasValue)
                 {
                     identity = SpawnSceneObject(msg);
                 }
-                else if (msg.prefabHash.HasValue)
+                else if (msg.PrefabHash.HasValue)
                 {
-                    var handler = GetSpawnHandler(msg.prefabHash.Value);
+                    var handler = GetSpawnHandler(msg.PrefabHash.Value);
                     if (handler.IsAsyncSpawn())
                     {
                         OnSpawnAsync(handler.HandlerAsync, msg).Forget();
@@ -617,11 +540,14 @@ namespace Mirage
             // should never happen, Spawn methods above should throw instead
             Debug.Assert(spawnedIdentity != null);
 
+            if (spawnedIdentity.NetId != 0 && spawnedIdentity.NetId != msg.NetId)
+                logger.LogWarning($"Spawn Identity already had a netId but SpawnMessage has a differnet NetId. Current Id={spawnedIdentity.NetId}, SpawnMessag Id={msg.NetId}");
+
             ApplySpawnPayload(spawnedIdentity, msg);
 
             // add after applying payload, but only if it is new object
             if (!alreadyExisted)
-                Client.World.AddIdentity(msg.netId, spawnedIdentity);
+                _client.World.AddIdentity(msg.NetId, spawnedIdentity);
         }
 
         private async UniTaskVoid OnSpawnAsync(SpawnHandlerAsyncDelegate spawnHandler, SpawnMessage msg)
@@ -632,11 +558,11 @@ namespace Mirage
                 // todo can this be optimized
                 using (var writer = NetworkWriterPool.GetWriter())
                 {
-                    writer.Write(msg.payload);
+                    writer.Write(msg.Payload);
                     // use read and write so that payload will look the same as original
                     using (var reader = NetworkReaderPool.GetReader(writer.ToArraySegment(), null))
                     {
-                        msg.payload = reader.Read<ArraySegment<byte>>();
+                        msg.Payload = reader.Read<ArraySegment<byte>>();
 
                         var identity = await spawnHandler.Invoke(msg);
                         AfterSpawn(msg, false, identity);
@@ -647,7 +573,7 @@ namespace Mirage
             // this async is called from message handler, so we want to catch and maybe disconnect
             catch (Exception e)
             {
-                Client.MessageHandler.LogAndCheckDisconnect(Client.Player, e);
+                _client.MessageHandler.LogAndCheckDisconnect(_client.Player, e);
             }
         }
 
@@ -656,38 +582,40 @@ namespace Mirage
             var spawnHandler = handler.Handler;
             if (spawnHandler != null)
             {
-                if (logger.LogEnabled()) logger.Log($"Client spawn with custom handler: [netId:{msg.netId} prefabHash:{msg.prefabHash:X} pos:{msg.position} rotation: {msg.rotation}]");
+                if (logger.LogEnabled()) logger.Log($"[ClientObjectManager] Custom handler for netid:{msg.NetId}");
 
                 var obj = spawnHandler.Invoke(msg);
                 if (obj == null)
-                    throw new SpawnObjectException($"Spawn handler for prefabHash={msg.prefabHash:X} returned null");
+                    throw new SpawnObjectException($"Spawn handler for prefabHash={msg.PrefabHash:X} returned null");
                 return obj;
             }
 
-            // checked/used else where
+            // double check async handler is null
             Debug.Assert(handler.HandlerAsync == null);
 
             var prefab = handler.Prefab;
 
-            if (logger.LogEnabled()) logger.Log($"Client spawn from prefab: [netId:{msg.netId} prefabHash:{msg.prefabHash:X} pos:{msg.position} rotation: {msg.rotation}]");
+            if (logger.LogEnabled()) logger.Log($"[ClientObjectManager] Instantiate Prefab for netid:{msg.NetId}, hash:{msg.PrefabHash.Value}, prefab:{prefab.name}");
 
             // we need to set position and rotation here incase that their values are used from awake/onenable
-            var pos = msg.position ?? prefab.transform.position;
-            var rot = msg.rotation ?? prefab.transform.rotation;
+            var pos = msg.SpawnValues.Position ?? prefab.transform.position;
+            var rot = msg.SpawnValues.Rotation ?? prefab.transform.rotation;
             return Instantiate(prefab, pos, rot);
         }
 
         internal NetworkIdentity SpawnSceneObject(SpawnMessage msg)
         {
-            var spawned = SpawnSceneObject(msg.sceneId.Value);
-            if (spawned != null)
+            var sceneId = msg.SceneId.Value;
+
+            if (spawnableObjects.TryGetValue(sceneId, out var foundSceneObject))
             {
-                if (logger.LogEnabled()) logger.Log($"Client spawn from scene object [netId:{msg.netId}] [sceneId:{msg.sceneId:X}] obj:{spawned}");
-                return spawned;
+                spawnableObjects.Remove(sceneId);
+                if (logger.LogEnabled()) logger.Log($"[ClientObjectManager] Found scene object for netid:{msg.NetId}, sceneId:{msg.SceneId.Value:X}, obj:{foundSceneObject}");
+                return foundSceneObject;
             }
 
             // failed to spawn
-            var errorMsg = $"Failed to spawn scene object sceneId={msg.sceneId:X}";
+            var errorMsg = $"Failed to spawn scene object sceneId={msg.SceneId:X}";
             // dump the whole spawnable objects dict for easier debugging
             if (logger.LogEnabled())
             {
@@ -703,27 +631,16 @@ namespace Mirage
             throw new SpawnObjectException(errorMsg);
         }
 
-        private NetworkIdentity SpawnSceneObject(ulong sceneId)
-        {
-            if (spawnableObjects.TryGetValue(sceneId, out var identity))
-            {
-                spawnableObjects.Remove(sceneId);
-                return identity;
-            }
-            logger.LogWarning($"Could not find scene object with sceneId:{sceneId:X}");
-            return null;
-        }
-
         internal void OnRemoveAuthority(RemoveAuthorityMessage msg)
         {
             if (logger.LogEnabled()) logger.Log($"Client remove auth handler");
 
             // was the object already spawned?
-            var existing = Client.World.TryGetIdentity(msg.netId, out var identity);
+            var existing = _client.World.TryGetIdentity(msg.NetId, out var identity);
 
             if (!existing)
             {
-                logger.LogWarning($"Could not find object with id {msg.netId}");
+                logger.LogWarning($"Could not find object with id {msg.NetId}");
                 return;
             }
 
@@ -736,7 +653,7 @@ namespace Mirage
         {
             if (logger.LogEnabled()) logger.Log($"Client remove character handler");
 
-            var player = Client.Player;
+            var player = _client.Player;
             var identity = player.Identity;
 
             if (identity == null)
@@ -746,26 +663,26 @@ namespace Mirage
             }
 
             player.Identity = null;
-            identity.HasAuthority = msg.keepAuthority;
+            identity.HasAuthority = msg.KeepAuthority;
 
             identity.NotifyAuthority();
         }
 
         internal void OnObjectHide(ObjectHideMessage msg)
         {
-            DestroyObject(msg.netId);
+            DestroyObject(msg.NetId);
         }
 
         internal void OnObjectDestroy(ObjectDestroyMessage msg)
         {
-            DestroyObject(msg.netId);
+            DestroyObject(msg.NetId);
         }
 
         private void DestroyObject(uint netId)
         {
             if (logger.LogEnabled()) logger.Log("ClientScene.OnObjDestroy netId:" + netId);
 
-            if (Client.World.TryGetIdentity(netId, out var localObject))
+            if (_client.World.TryGetIdentity(netId, out var localObject))
             {
                 UnSpawn(localObject);
             }
@@ -777,9 +694,9 @@ namespace Mirage
 
         internal void OnHostClientSpawn(SpawnMessage msg)
         {
-            if (Client.World.TryGetIdentity(msg.netId, out var localObject))
+            if (_client.World.TryGetIdentity(msg.NetId, out var localObject))
             {
-                if (msg.isLocalPlayer)
+                if (msg.IsLocalPlayer)
                     InternalAddCharacter(localObject);
 
                 localObject.SetClientValues(this, msg);
@@ -790,34 +707,9 @@ namespace Mirage
             }
         }
 
-        internal void OnRpcMessage(RpcMessage msg)
-        {
-            if (logger.LogEnabled()) logger.Log($"ClientScene.OnRPCMessage index:{msg.functionIndex} netId:{msg.netId}");
-
-            if (!Client.World.TryGetIdentity(msg.netId, out var identity))
-            {
-                if (logger.WarnEnabled()) logger.LogWarning($"Spawned object not found when handling ClientRpc message [netId={msg.netId}]");
-                return;
-            }
-
-            var behaviour = identity.NetworkBehaviours[msg.componentIndex];
-
-            var remoteCall = behaviour.RemoteCallCollection.Get(msg.functionIndex);
-
-            if (remoteCall.InvokeType != RpcInvokeType.ClientRpc)
-            {
-                throw new MethodInvocationException($"Invalid RPC call with index {msg.functionIndex}");
-            }
-
-            using (var reader = NetworkReaderPool.GetReader(msg.payload, Client.World))
-            {
-                remoteCall.Invoke(reader, behaviour, null, 0);
-            }
-        }
-
         private void CheckForLocalPlayer(NetworkIdentity identity)
         {
-            if (identity && identity == Client.Player?.Identity)
+            if (identity && identity == _client.Player?.Identity)
             {
                 // Set isLocalPlayer to true on this NetworkIdentity and trigger OnStartLocalPlayer in all scripts on the same GO
                 identity.StartLocalPlayer();
@@ -826,45 +718,49 @@ namespace Mirage
             }
         }
 
-        private void OnServerRpcReply(INetworkPlayer player, ServerRpcReply reply)
+
+
+#if UNITY_EDITOR
+        private readonly Dictionary<int, NetworkIdentity> _validateCache = new Dictionary<int, NetworkIdentity>();
+
+        private void OnValidate()
         {
-            // find the callback that was waiting for this and invoke it.
-            if (_callbacks.TryGetValue(reply.replyId, out var action))
+            // clear before just incase it didn't clear last time
+            _validateCache.Clear();
+
+            ValidatePrefabs(spawnPrefabs);
+            ValidatePrefabs(NetworkPrefabs?.Prefabs);
+
+            // clear after so unity can release prefabs if it wants to
+            _validateCache.Clear();
+        }
+
+        private void ValidatePrefabs(IEnumerable<NetworkIdentity> prefabs)
+        {
+            if (prefabs == null)
+                return;
+
+            foreach (var prefab in prefabs)
             {
-                _callbacks.Remove(_replyId);
-                using (var reader = NetworkReaderPool.GetReader(reply.payload, Client.World))
+                if (prefab == null)
+                    continue;
+
+                var hash = prefab.PrefabHash;
+                if (_validateCache.TryGetValue(hash, out var existing))
                 {
-                    action.Invoke(reader);
+                    if (prefab == existing)
+                        continue;
+
+                    var pathA = UnityEditor.AssetDatabase.GetAssetPath(prefab);
+                    var pathB = UnityEditor.AssetDatabase.GetAssetPath(existing);
+                    logger.Assert(prefab.PrefabHash == existing.PrefabHash);
+                    logger.LogError($"2 prefabs had the same hash:'{hash}', A:'{prefab.name}' B:'{existing.name}'. Path A:{pathA} Path B:{pathB}");
                 }
-            }
-            else
-            {
-                throw new MethodAccessException("Received reply but no handler was registered");
+
+                _validateCache[hash] = prefab;
             }
         }
-
-        private readonly Dictionary<int, Action<NetworkReader>> _callbacks = new Dictionary<int, Action<NetworkReader>>();
-        private int _replyId;
-
-        /// <summary>
-        /// Creates a task that waits for a reply from the server
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <returns>the task that will be completed when the result is in, and the id to use in the request</returns>
-        internal (UniTask<T> task, int replyId) CreateReplyTask<T>()
-        {
-            var newReplyId = _replyId++;
-            var completionSource = AutoResetUniTaskCompletionSource<T>.Create();
-            void Callback(NetworkReader reader)
-            {
-                var result = reader.Read<T>();
-                completionSource.TrySetResult(result);
-            }
-
-            _callbacks.Add(newReplyId, Callback);
-            return (completionSource.Task, newReplyId);
-        }
-
+#endif
     }
 
     public class SpawnHandler

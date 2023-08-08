@@ -17,6 +17,7 @@ namespace Mirage
     /// <para>when a client connect NetworkSceneManager will send a message telling the new client to load the scene that is active on the server</para>
     /// </summary>
     [AddComponentMenu("Network/NetworkSceneManager")]
+    [HelpURL("https://miragenet.github.io/Mirage/docs/components/network-scene-manager")]
     [DisallowMultipleComponent]
     public class NetworkSceneManager : MonoBehaviour
     {
@@ -26,11 +27,10 @@ namespace Mirage
 
         [Header("Setup Settings")]
 
-        [FormerlySerializedAs("client")]
         public NetworkClient Client;
-
-        [FormerlySerializedAs("server")]
         public NetworkServer Server;
+        public ServerObjectManager ServerObjectManager;
+        public ClientObjectManager ClientObjectManager;
 
         [Tooltip("Should server send all additive scenes to new clients when they join?")]
         public bool SendAdditiveScenesOnAuthenticate = true;
@@ -285,6 +285,8 @@ namespace Mirage
                 SetSceneIsReady();
 
             //Call event once all scene related actions (sub-scenes and ready) are done.
+            Client.World.RemoveDestroyedObjects();
+            ClientObjectManager.PrepareToSpawnSceneObjects();
             OnClientFinishedSceneChange?.Invoke(scene, sceneOperation);
         }
 
@@ -403,7 +405,7 @@ namespace Mirage
 
             var message = new SceneMessage { MainActivateScene = scenePath, SceneOperation = sceneOperation };
             // send to players, excluding host
-            NetworkServer.SendToManyExcept(players, excluded: Server.LocalPlayer, message);
+            Server.SendToMany(players, message, excludeLocalPlayer: true);
         }
 
         /// <summary>
@@ -605,7 +607,13 @@ namespace Mirage
         {
             logger.Log(" [NetworkSceneManager] - OnServerSceneChanged");
 
-            Server.SendToAll(new SceneReadyMessage());
+            // todo this might cause issues if only some players are loading scene
+            // send to all, excluding host
+            Server.SendToAll(new SceneReadyMessage(), excludeLocalPlayer: true);
+
+            // clean up and invoke server functions before user events
+            Server.World.RemoveDestroyedObjects();
+            ServerObjectManager.SpawnOrActivate();
 
             OnServerFinishedSceneChange?.Invoke(scene, operation);
         }
@@ -624,7 +632,7 @@ namespace Mirage
         }
 
         /// <summary>
-        /// default ready handler.
+        /// default ready handler. called on server
         /// </summary>
         /// <param name="player"></param>
         /// <param name="msg"></param>
@@ -634,6 +642,8 @@ namespace Mirage
 
             player.SceneIsReady = true;
 
+            // invoke server functions before user events
+            ServerObjectManager.SpawnVisibleObjects(player, false, (HashSet<NetworkIdentity>)null);
             OnPlayerSceneReady.Invoke(player);
         }
 
@@ -813,7 +823,7 @@ namespace Mirage
                     SceneLoadingAsyncOperationInfo.allowSceneActivation = false;
                 }
 
-                await SceneLoadingAsyncOperationInfo;
+                await SceneLoadingAsyncOperationInfo.ToUniTask();
                 AssertSceneIsActive(scenePath);
 
                 CompleteLoadingScene(SceneManager.GetActiveScene(), SceneOperation.Normal);
@@ -839,7 +849,7 @@ namespace Mirage
                 ? SceneManager.LoadSceneAsync(scenePath, sceneLoadParameters.Value)
                 : SceneManager.LoadSceneAsync(scenePath, LoadSceneMode.Additive);
 
-            await SceneLoadingAsyncOperationInfo;
+            await SceneLoadingAsyncOperationInfo.ToUniTask();
 
             var scene = SceneManager.GetSceneAt(SceneManager.sceneCount - 1);
 
@@ -862,7 +872,7 @@ namespace Mirage
             var scene = SceneManager.GetSceneByPath(scenePath);
             if (scene.IsValid())
             {
-                await SceneManager.UnloadSceneAsync(scenePath, UnloadSceneOptions.UnloadAllEmbeddedSceneObjects);
+                await SceneManager.UnloadSceneAsync(scenePath, UnloadSceneOptions.UnloadAllEmbeddedSceneObjects).ToUniTask();
 
                 CompleteLoadingScene(scene, SceneOperation.UnloadAdditive);
             }
@@ -881,7 +891,7 @@ namespace Mirage
             // Ensure additive scene is actually loaded
             if (scene.IsValid())
             {
-                await SceneManager.UnloadSceneAsync(scene, UnloadSceneOptions.UnloadAllEmbeddedSceneObjects);
+                await SceneManager.UnloadSceneAsync(scene, UnloadSceneOptions.UnloadAllEmbeddedSceneObjects).ToUniTask();
 
                 CompleteLoadingScene(scene, SceneOperation.UnloadAdditive);
             }

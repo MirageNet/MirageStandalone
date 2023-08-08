@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Runtime.CompilerServices;
+using Cysharp.Threading.Tasks;
+using Mirage.Authentication;
 using Mirage.Events;
 using Mirage.Logging;
 using Mirage.Serialization;
@@ -17,6 +19,7 @@ namespace Mirage
     /// <para>NetworkServer handles remote connections from remote clients, and also has a local connection for a local client.</para>
     /// </remarks>
     [AddComponentMenu("Network/NetworkServer")]
+    [HelpURL("https://miragenet.github.io/Mirage/docs/reference/Mirage/NetworkServer")]
     [DisallowMultipleComponent]
     public class NetworkServer : MonoBehaviour
     {
@@ -41,6 +44,8 @@ namespace Mirage
         public int MaxConnections = 4;
 
         public bool DisconnectOnException = true;
+        [Tooltip("Should the message handler rethrow the exception after logging. This should only be used when deubgging as it may stop other Mirage functions from running after messages handling")]
+        public bool RethrowException = false;
 
         [Tooltip("If true will set Application.runInBackground")]
         public bool RunInBackground = true;
@@ -51,10 +56,12 @@ namespace Mirage
         [Tooltip("Creates Socket for Peer to use")]
         public SocketFactory SocketFactory;
 
+        public ServerObjectManager ObjectManager;
+
         private Peer _peer;
 
         [Tooltip("Authentication component attached to this object")]
-        public NetworkAuthenticator authenticator;
+        public AuthenticatorSettings Authenticator;
 
         [Header("Events")]
         [SerializeField] private AddLateEvent _started = new AddLateEvent();
@@ -119,13 +126,6 @@ namespace Mirage
         public bool LocalClientActive => LocalClient != null && LocalClient.Active;
 
         /// <summary>
-        /// Number of active player objects across all connections on the server.
-        /// <para>This is only valid on the host / server.</para>
-        /// </summary>
-        // todo rename this from players to characters. (or remove it? it seems like a confusing field)
-        public int NumberOfPlayers => Players.Count(kv => kv.HasCharacter);
-
-        /// <summary>
         /// A list of local connections on the server.
         /// </summary>
         public IReadOnlyCollection<INetworkPlayer> Players => _connections.Values;
@@ -139,6 +139,7 @@ namespace Mirage
         public bool Active { get; private set; }
 
         public NetworkWorld World { get; private set; }
+        // todo move syncVarsender, it doesn't need to be a public fields on network server any more
         public SyncVarSender SyncVarSender { get; private set; }
 
         private SyncVarReceiver _syncVarReceiver;
@@ -177,9 +178,28 @@ namespace Mirage
 
             // just clear list, connections will be disconnected when peer is closed
             _connections.Clear();
+            LocalClient = null;
             LocalPlayer = null;
 
-            Cleanup();
+            _stopped?.Invoke();
+            Active = false;
+
+            _started.Reset();
+            _onStartHost.Reset();
+            _onStopHost.Reset();
+            _stopped.Reset();
+
+            World = null;
+            SyncVarSender = null;
+
+            if (_peer != null)
+            {
+                //remove handlers first to stop loop
+                _peer.OnConnected -= Peer_OnConnected;
+                _peer.OnDisconnected -= Peer_OnDisconnected;
+                _peer.Close();
+                _peer = null;
+            }
 
             // remove listen when server is stopped so that we can cleanup correctly 
             Application.quitting -= Stop;
@@ -207,12 +227,11 @@ namespace Mirage
             SyncVarSender = new SyncVarSender();
 
             LocalClient = localClient;
-            MessageHandler = new MessageHandler(World, DisconnectOnException);
-            MessageHandler.RegisterHandler<NetworkPingMessage>(World.Time.OnServerPing);
+            MessageHandler = new MessageHandler(World, DisconnectOnException, RethrowException);
+            MessageHandler.RegisterHandler<NetworkPingMessage>(World.Time.OnServerPing, allowUnauthenticated: true);
 
             // create after MessageHandler, SyncVarReceiver uses it 
             _syncVarReceiver = new SyncVarReceiver(this, World);
-
 
             var dataHandler = new DataHandler(MessageHandler, _connections);
             Metrics = EnablePeerMetrics ? new Metrics(MetricsSize) : null;
@@ -256,8 +275,14 @@ namespace Mirage
                 if (logger.LogEnabled()) logger.Log("Server started, but not listening for connections: Attempts to connect to this instance will fail!");
             }
 
-            InitializeAuthEvents();
+            if (Authenticator != null)
+                Authenticator.Setup(this);
+
             Active = true;
+            // make sure to call ServerObjectManager start before started event
+            // this is too stop any race conditions where other scripts add their started event before SOM is setup
+            if (ObjectManager != null)
+                ObjectManager.ServerStarted(this);
             _started?.Invoke();
 
             if (LocalClient != null)
@@ -267,7 +292,10 @@ namespace Mirage
                 _onStartHost?.Invoke();
 
                 localClient.ConnectHost(this, dataHandler);
+                Connected?.Invoke(LocalPlayer);
+
                 if (logger.LogEnabled()) logger.Log("NetworkServer StartHost");
+                Authenticate(LocalPlayer);
             }
         }
 
@@ -282,22 +310,6 @@ namespace Mirage
                 SocketFactory = GetComponent<SocketFactory>();
             if (SocketFactory == null)
                 throw new InvalidOperationException($"{nameof(SocketFactory)} could not be found for {nameof(NetworkServer)}");
-        }
-
-        private void InitializeAuthEvents()
-        {
-            if (authenticator != null)
-            {
-                authenticator.OnServerAuthenticated += OnAuthenticated;
-                authenticator.ServerSetup(this);
-
-                Connected.AddListener(authenticator.ServerAuthenticate);
-            }
-            else
-            {
-                // if no authenticator, consider every connection as authenticated
-                Connected.AddListener(OnAuthenticated);
-            }
         }
 
         internal void Update()
@@ -318,15 +330,55 @@ namespace Mirage
 
         private void Peer_OnConnected(IConnection conn)
         {
-            var player = new NetworkPlayer(conn);
-
-            if (logger.LogEnabled()) logger.Log($"Server accepted client: {player}");
+            var player = new NetworkPlayer(conn, false);
+            if (logger.LogEnabled()) logger.Log($"Server new player {player}");
 
             // add connection
-            AddConnection(player);
+            _connections[player.Connection] = player;
 
             // let everyone know we just accepted a connection
             Connected?.Invoke(player);
+
+            Authenticate(player);
+        }
+
+        private void Authenticate(INetworkPlayer player)
+        {
+            // authenticate player
+            if (Authenticator != null)
+                AuthenticateAsync(player).Forget();
+            else
+                AuthenticationSuccess(player, AuthenticationResult.CreateSuccess("No Authenticators"));
+        }
+
+        private async UniTaskVoid AuthenticateAsync(INetworkPlayer player)
+        {
+            var result = await Authenticator.ServerAuthenticate(player);
+
+            // process results
+            if (result.Success)
+            {
+                AuthenticationSuccess(player, result);
+            }
+            else
+            {
+                // todo use reason
+                player.Disconnect();
+            }
+        }
+
+        private void AuthenticationSuccess(INetworkPlayer player, AuthenticationResult result)
+        {
+            player.SetAuthentication(new PlayerAuthentication(result.Authenticator, result.Data));
+
+            // send message to let client know
+            //     we want to send this even if host, or no Authenticators
+            //     this makes host logic a lot easier,
+            //     because we need to call SetAuthentication on both server/client before Authenticated
+            player.Send(new AuthSuccessMessage { AuthenticatorName = result.Authenticator?.AuthenticatorName });
+
+            // add connection
+            Authenticated?.Invoke(player);
         }
 
         private void Peer_OnDisconnected(IConnection conn, DisconnectReason reason)
@@ -345,62 +397,10 @@ namespace Mirage
         }
 
         /// <summary>
-        /// cleanup resources so that we can start again
-        /// </summary>
-        private void Cleanup()
-        {
-            if (authenticator != null)
-            {
-                authenticator.OnServerAuthenticated -= OnAuthenticated;
-                Connected.RemoveListener(authenticator.ServerAuthenticate);
-            }
-            else
-            {
-                // if no authenticator, consider every connection as authenticated
-                Connected.RemoveListener(OnAuthenticated);
-            }
-
-            _stopped?.Invoke();
-            Active = false;
-
-            _started.Reset();
-            _onStartHost.Reset();
-            _onStopHost.Reset();
-            _stopped.Reset();
-
-            World = null;
-            SyncVarSender = null;
-
-            Application.quitting -= Stop;
-
-            if (_peer != null)
-            {
-                //remove handlers first to stop loop
-                _peer.OnConnected -= Peer_OnConnected;
-                _peer.OnDisconnected -= Peer_OnDisconnected;
-                _peer.Close();
-                _peer = null;
-            }
-        }
-
-        /// <summary>
-        /// <para>This accepts a network connection and adds it to the server.</para>
-        /// <para>This connection will use the callbacks registered with the server.</para>
-        /// </summary>
-        /// <param name="player">Network connection to add.</param>
-        public void AddConnection(INetworkPlayer player)
-        {
-            if (!Players.Contains(player))
-            {
-                _connections.Add(player.Connection, player);
-            }
-        }
-
-        /// <summary>
         /// This removes an external connection.
         /// </summary>
         /// <param name="connectionId">The id of the connection to remove.</param>
-        public void RemoveConnection(INetworkPlayer player)
+        private void RemoveConnection(INetworkPlayer player)
         {
             _connections.Remove(player.Connection);
         }
@@ -416,101 +416,108 @@ namespace Mirage
                 throw new InvalidOperationException("Local client connection already exists");
             }
 
-            var player = new NetworkPlayer(connection);
+            var player = new NetworkPlayer(connection, true);
             LocalPlayer = player;
             LocalClient = client;
 
             if (logger.LogEnabled()) logger.Log($"Server accepted local client connection: {player}");
 
-            // add the connection for this local player.
-            AddConnection(player);
+            _connections[player.Connection] = player;
+
+            if (Authenticator != null)
+                // we need to add host player to auth early, so that Client.Connected, can be used to send auth message
+                // if we want for server to add it then we will be too late 
+                Authenticator.PreAddHostPlayer(player);
         }
 
-        /// <summary>
-        /// Invokes the Connected event using the local player
-        /// <para>this should be done after the clients version has been invoked</para>
-        /// </summary>
-        internal void InvokeLocalConnected()
+        public void SendToAll<T>(T msg, bool excludeLocalPlayer, Channel channelId = Channel.Reliable)
         {
-            if (LocalPlayer == null)
-            {
-                throw new InvalidOperationException("Local connection does not exist");
-            }
-            Connected?.Invoke(LocalPlayer);
+            var enumerator = _connections.Values.GetEnumerator();
+            SendToMany(enumerator, msg, excludeLocalPlayer, channelId);
         }
 
-        /// <summary>
-        /// Send a message to all connected clients.
-        /// </summary>
-        /// <typeparam name="T">Message type</typeparam>
-        /// <param name="msg">Message</param>
-        /// <param name="channelId">Transport channel to use</param>
-        public void SendToAll<T>(T msg, Channel channelId = Channel.Reliable)
+        public void SendToMany<T>(IReadOnlyList<INetworkPlayer> players, T msg, bool excludeLocalPlayer, Channel channelId = Channel.Reliable)
         {
-            if (logger.LogEnabled()) logger.Log("Server.SendToAll id:" + typeof(T));
-
-            using (var writer = NetworkWriterPool.GetWriter())
+            if (excludeLocalPlayer)
             {
-                // pack message into byte[] once
-                MessagePacker.Pack(msg, writer);
-                var segment = writer.ToArraySegment();
-                var count = 0;
-
-                // using SendToMany (with IEnumerable) will cause Enumerator to be boxed and create GC/alloc
-                // instead we can use while loop and MoveNext to avoid boxing
-                var enumerator = _connections.Values.GetEnumerator();
-                while (enumerator.MoveNext())
+                using (var list = AutoPool<List<INetworkPlayer>>.Take())
                 {
-                    var player = enumerator.Current;
-                    player.Send(segment, channelId);
-                    count++;
+                    ListHelper.AddToList(list, players, LocalPlayer);
+                    NetworkServer.SendToMany(list, msg, channelId);
                 }
-                enumerator.Dispose();
-
-                NetworkDiagnostics.OnSend(msg, segment.Count, count);
+            }
+            else
+            {
+                // we are not removing any objects from the list, so we can skip the AddToList
+                NetworkServer.SendToMany(players, msg, channelId);
             }
         }
-
         /// <summary>
-        /// Sends a message to many connections
-        /// <para>WARNING: using this method <b>may</b> cause Enumerator to be boxed creating GC/alloc. Use <see cref="SendToMany{T}(IReadOnlyList{INetworkPlayer}, T, int)"/> version where possible</para>
+        /// Warning: this will allocate, Use <see cref="SendToMany{T}(IReadOnlyList{INetworkPlayer}, T, bool, Channel)"/> or <see cref="SendToMany{T, TEnumerator}(TEnumerator, T, bool, Channel)"/> instead
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="players"></param>
         /// <param name="msg"></param>
+        /// <param name="excludeLocalPlayer"></param>
         /// <param name="channelId"></param>
-        public static void SendToMany<T>(IEnumerable<INetworkPlayer> players, T msg, Channel channelId = Channel.Reliable)
+        public void SendToMany<T>(IEnumerable<INetworkPlayer> players, T msg, bool excludeLocalPlayer, Channel channelId = Channel.Reliable)
         {
-            using (var writer = NetworkWriterPool.GetWriter())
+            using (var list = AutoPool<List<INetworkPlayer>>.Take())
             {
-                // pack message into byte[] once
-                MessagePacker.Pack(msg, writer);
-                var segment = writer.ToArraySegment();
-                var count = 0;
+                ListHelper.AddToList(list, players, excludeLocalPlayer ? LocalPlayer : null);
+                NetworkServer.SendToMany(list, msg, channelId);
+            }
+        }
+        /// <summary>
+        /// use to avoid allocation of IEnumerator
+        /// </summary>
+        public void SendToMany<T, TEnumerator>(TEnumerator playerEnumerator, T msg, bool excludeLocalPlayer, Channel channelId = Channel.Reliable)
+            where TEnumerator : struct, IEnumerator<INetworkPlayer>
+        {
+            using (var list = AutoPool<List<INetworkPlayer>>.Take())
+            {
+                ListHelper.AddToList(list, playerEnumerator, excludeLocalPlayer ? LocalPlayer : null);
+                NetworkServer.SendToMany(list, msg, channelId);
+            }
+        }
 
-                foreach (var player in players)
-                {
-                    player.Send(segment, channelId);
-                    count++;
-                }
+        public void SendToObservers<T>(NetworkIdentity identity, T msg, bool excludeLocalPlayer, bool excludeOwner, Channel channelId = Channel.Reliable)
+        {
+            var observers = identity.observers;
+            if (observers.Count == 0)
+                return;
 
-                NetworkDiagnostics.OnSend(msg, segment.Count, count);
+            using (var list = AutoPool<List<INetworkPlayer>>.Take())
+            {
+                var enumerator = observers.GetEnumerator();
+                ListHelper.AddToList(list, enumerator, excludeLocalPlayer ? LocalPlayer : null, excludeOwner ? identity.Owner : null);
+                NetworkServer.SendToMany(list, msg, channelId);
             }
         }
 
         /// <summary>
-        /// Sends a message to many connections
-        /// <para>
-        /// Same as <see cref="SendToMany{T}(IEnumerable{INetworkPlayer}, T, int)"/> but uses for loop to avoid allocations
-        /// </para>
+        /// Sends to list of players.
+        /// <para>All other SendTo... functions call this, it dooes not do any extra checks, just serializes message if not empty, then sends it</para>
         /// </summary>
-        /// <remarks>
-        /// Using list in foreach loop causes Unity's mono version to box the struct which causes allocations, <see href="https://docs.unity3d.com/2019.4/Documentation/Manual/BestPracticeUnderstandingPerformanceInUnity4-1.html">Understanding the managed heap</see>
-        /// </remarks>
+        // need explicity List function here, so that implicit casts to List from wrapper works
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void SendToMany<T>(List<INetworkPlayer> players, T msg, Channel channelId = Channel.Reliable)
+            => SendToMany((IReadOnlyList<INetworkPlayer>)players, msg, channelId);
+
+        /// <summary>
+        /// Sends to list of players.
+        /// <para>All other SendTo... functions call this, it dooes not do any extra checks, just serializes message if not empty, then sends it</para>
+        /// </summary>
         public static void SendToMany<T>(IReadOnlyList<INetworkPlayer> players, T msg, Channel channelId = Channel.Reliable)
         {
+            // avoid serializing when list is empty
+            if (players.Count == 0)
+                return;
+
             using (var writer = NetworkWriterPool.GetWriter())
             {
+                if (logger.LogEnabled()) logger.Log($"Sending {typeof(T)} to {players.Count} players, channel:{channelId}");
+
                 // pack message into byte[] once
                 MessagePacker.Pack(msg, writer);
                 var segment = writer.ToArraySegment();
@@ -519,40 +526,6 @@ namespace Mirage
                 for (var i = 0; i < count; i++)
                 {
                     players[i].Send(segment, channelId);
-                }
-
-                NetworkDiagnostics.OnSend(msg, segment.Count, count);
-            }
-        }
-
-        /// <summary>
-        /// Sends a message to many connections, expect <paramref name="excluded"/>.
-        /// <para>
-        /// This can be useful if you want to send to a observers of an object expect the owner. Or if you want to send to all expect the local host player.
-        /// </para>
-        /// <para>WARNING: using this method <b>may</b> cause Enumerator to be boxed creating GC/alloc. Use <see cref="SendToMany{T}(IReadOnlyList{INetworkPlayer}, T, int)"/> version where possible</para>
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="players"></param>
-        /// <param name="excluded">player to exclude, Can be null</param>
-        /// <param name="msg"></param>
-        /// <param name="channelId"></param>
-        public static void SendToManyExcept<T>(IEnumerable<INetworkPlayer> players, INetworkPlayer excluded, T msg, Channel channelId = Channel.Reliable)
-        {
-            using (var writer = NetworkWriterPool.GetWriter())
-            {
-                // pack message into byte[] once
-                MessagePacker.Pack(msg, writer);
-                var segment = writer.ToArraySegment();
-                var count = 0;
-
-                foreach (var player in players)
-                {
-                    if (player == excluded)
-                        continue;
-
-                    player.Send(segment, channelId);
-                    count++;
                 }
 
                 NetworkDiagnostics.OnSend(msg, segment.Count, count);
@@ -577,13 +550,6 @@ namespace Mirage
 
             if (player == LocalPlayer)
                 LocalPlayer = null;
-        }
-
-        internal void OnAuthenticated(INetworkPlayer player)
-        {
-            if (logger.LogEnabled()) logger.Log("Server authenticate client:" + player);
-
-            Authenticated?.Invoke(player);
         }
 
         /// <summary>
@@ -612,6 +578,21 @@ namespace Mirage
                     if (logger.WarnEnabled()) logger.LogWarning($"No player found for message received from client {connection}");
                 }
             }
+        }
+    }
+
+    public static class NetworkExtensions
+    {
+        /// <summary>
+        /// Send a message to all the remote observers
+        /// </summary>
+        /// <typeparam name="T">The message type to dispatch.</typeparam>
+        /// <param name="msg">The message to deliver to clients.</param>
+        /// <param name="includeOwner">Should the owner should receive this message too?</param>
+        /// <param name="channelId">The transport channel that should be used to deliver the message. Default is the Reliable channel.</param>
+        internal static void SendToRemoteObservers<T>(this NetworkIdentity identity, T msg, bool includeOwner = true, Channel channelId = Channel.Reliable)
+        {
+            identity.Server.SendToObservers(identity, msg, excludeLocalPlayer: true, excludeOwner: !includeOwner, channelId: channelId);
         }
     }
 }

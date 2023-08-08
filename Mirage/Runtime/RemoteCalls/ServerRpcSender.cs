@@ -9,54 +9,56 @@ namespace Mirage.RemoteCalls
     /// </summary>
     public static class ServerRpcSender
     {
-        public static void Send(NetworkBehaviour behaviour, int index, NetworkWriter writer, Channel channelId, bool requireAuthority)
+        public static void Send(NetworkBehaviour behaviour, int relativeIndex, NetworkWriter writer, Channel channelId, bool requireAuthority)
         {
+            var index = behaviour.Identity.RemoteCallCollection.GetIndexOffset(behaviour) + relativeIndex;
             Validate(behaviour, index, requireAuthority);
 
-            var message = new ServerRpcMessage
+            var message = new RpcMessage
             {
-                netId = behaviour.NetId,
-                componentIndex = behaviour.ComponentIndex,
-                functionIndex = index,
-                payload = writer.ToArraySegment()
+                NetId = behaviour.NetId,
+                FunctionIndex = index,
+                Payload = writer.ToArraySegment()
             };
 
             behaviour.Client.Send(message, channelId);
         }
 
-        public static UniTask<T> SendWithReturn<T>(NetworkBehaviour behaviour, int index, NetworkWriter writer, Channel channelId, bool requireAuthority)
+        public static UniTask<T> SendWithReturn<T>(NetworkBehaviour behaviour, int relativeIndex, NetworkWriter writer, bool requireAuthority)
         {
+            var index = behaviour.Identity.RemoteCallCollection.GetIndexOffset(behaviour) + relativeIndex;
             Validate(behaviour, index, requireAuthority);
-            var message = new ServerRpcWithReplyMessage
+            var message = new RpcWithReplyMessage
             {
-                netId = behaviour.NetId,
-                componentIndex = behaviour.ComponentIndex,
-                functionIndex = index,
-                payload = writer.ToArraySegment()
+                NetId = behaviour.NetId,
+                FunctionIndex = index,
+                Payload = writer.ToArraySegment()
             };
 
-            (var task, var id) = behaviour.ClientObjectManager.CreateReplyTask<T>();
+            (var task, var id) = behaviour.ClientObjectManager._rpcHandler.CreateReplyTask<T>();
 
-            message.replyId = id;
+            message.ReplyId = id;
 
-            behaviour.Client.Send(message, channelId);
+            // reply rpcs are always reliable
+            behaviour.Client.Send(message, Channel.Reliable);
 
             return task;
         }
 
         private static void Validate(NetworkBehaviour behaviour, int index, bool requireAuthority)
         {
-            var rpc = behaviour.RemoteCallCollection.Get(index);
             var client = behaviour.Client;
 
             if (client == null || !client.Active)
             {
+                var rpc = behaviour.Identity.RemoteCallCollection.GetRelative(behaviour, index);
                 throw new InvalidOperationException($"ServerRpc Function {rpc} called on server without an active client.");
             }
 
             // if authority is required, then client must have authority to send
             if (requireAuthority && !behaviour.HasAuthority)
             {
+                var rpc = behaviour.Identity.RemoteCallCollection.GetRelative(behaviour, index);
                 throw new InvalidOperationException($"Trying to send ServerRpc for object without authority. {rpc}");
             }
 

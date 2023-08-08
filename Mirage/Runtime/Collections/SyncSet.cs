@@ -11,6 +11,8 @@ namespace Mirage.Collections
 
         public int Count => objects.Count;
         public bool IsReadOnly { get; private set; }
+        void ISyncObject.SetShouldSyncFrom(bool shouldSync) => IsReadOnly = !shouldSync;
+        void ISyncObject.SetNetworkBehaviour(NetworkBehaviour networkBehaviour) { }
 
         internal int ChangeCount => _changes.Count;
 
@@ -82,10 +84,7 @@ namespace Mirage.Collections
 
         private void AddOperation(Operation op, T item)
         {
-            if (IsReadOnly)
-            {
-                throw new InvalidOperationException("SyncSets can only be modified at the server");
-            }
+            SyncObjectUtils.ThrowIfReadOnly(IsReadOnly);
 
             var change = new Change
             {
@@ -142,9 +141,6 @@ namespace Mirage.Collections
 
         public void OnDeserializeAll(NetworkReader reader)
         {
-            // This list can now only be modified by synchronization
-            IsReadOnly = true;
-
             // if init,  write the full list content
             var count = (int)reader.ReadPackedUInt32();
 
@@ -168,8 +164,6 @@ namespace Mirage.Collections
 
         public void OnDeserializeDelta(NetworkReader reader)
         {
-            // This list can now only be modified by synchronization
-            IsReadOnly = true;
             var raiseOnChange = false;
 
             var changesCount = (int)reader.ReadPackedUInt32();

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Mirage.CodeGen;
 using Mirage.Collections;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -41,7 +42,7 @@ namespace Mirage.Weaver
                     continue;
                 }
 
-                if (tf.ImplementsInterface<ISyncObject>())
+                if (tf.Implements<ISyncObject>())
                 {
                     if (fd.IsStatic)
                     {
@@ -85,7 +86,7 @@ namespace Mirage.Weaver
 
         private void RegisterSyncObjects(TypeDefinition netBehaviourSubclass)
         {
-            Weaver.DebugLog(netBehaviourSubclass, "  GenerateConstants ");
+            Weaver.DebugLog(netBehaviourSubclass, "GenerateConstants ");
 
             netBehaviourSubclass.AddToConstructor(logger, (worker) =>
             {
@@ -106,7 +107,7 @@ namespace Mirage.Weaver
                     return false;
                 }
 
-                return typeRef.Resolve().ImplementsInterface<ISyncObject>();
+                return typeRef.Resolve().Implements<ISyncObject>();
             }
             catch
             {

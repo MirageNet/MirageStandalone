@@ -11,6 +11,7 @@ namespace Mirage
     {
         public const string INTERVAL_TOOLTIP = "Time in seconds until next change is synchronized to the client. '0' means send immediately if changed. '0.5' means only send changes every 500ms.\n(This is for state synchronization like SyncVars, SyncLists, OnSerialize. Not for Cmds, Rpcs, etc.)";
 
+        // FieldOffset to make sure this struct is small and can be passed around efficiently
         [FieldOffset(0)]
         public SyncFrom From;
         [FieldOffset(1)]
@@ -58,15 +59,25 @@ namespace Mirage
         {
             if ((From & SyncFrom.Server) != 0 && identity.IsServer)
             {
-                // only write if either owner or ObserversOnly
-                // otherwise we can just skip the component
-                return (To & (SyncTo.Owner | SyncTo.ObserversOnly)) != 0;
+                // if ObserversOnly, then we always want too sync
+                if ((To & SyncTo.ObserversOnly) != 0)
+                    return true;
+
+                // dont need to check SyncTo.Owner, it is only case left here
+
+                // if to.owner, only sync if not host
+                return !identity.IsClient; // not host
             }
 
             if ((From & SyncFrom.Owner) != 0 && identity.HasAuthority)
             {
+                // todo do we need to relay to observer?
+
                 // if from owner, must be to server
-                return (To & SyncTo.Server) != 0;
+                if ((To & SyncTo.Server) != 0)
+                { // true if not host OR to ObserversOnly
+                    return !identity.IsServer || (To & SyncTo.ObserversOnly) != 0;
+                }
             }
 
             return false;
@@ -74,8 +85,28 @@ namespace Mirage
 
         public bool ToObserverWriterOnly(NetworkIdentity identity)
         {
-            // if server, and not sending to owner, then just use ObserverWriter
-            return identity.IsServer && ((To & (SyncTo.Owner)) == 0);
+            // if not to observer, then we can return early (saves performance on IsServer check)
+            if ((To & SyncTo.ObserversOnly) == 0)
+                return false;
+
+            // if not server, we are always send to server using owner Writer
+            if (!identity.IsServer)
+                return false;
+
+            // if not to.Owner, then use ObserverWriter
+            if ((To & (SyncTo.Owner)) == 0)
+                return true;
+
+            // if hostOwner, then use ObserverWriter
+            // HasAuthority is only true on server then it most also be host mode
+            if (identity.HasAuthority)
+                return true;
+
+            // no owner, then use ObserverWriter
+            if (identity.Owner == null)
+                return true;
+
+            return false;
         }
 
         public bool CopyToObservers(NetworkIdentity identity)

@@ -79,7 +79,7 @@ namespace Mirage
                 {
                     var varsMessage = new UpdateVarsMessage
                     {
-                        netId = identity.NetId
+                        NetId = identity.NetId
                     };
 
                     // send ownerWriter to owner
@@ -89,27 +89,14 @@ namespace Mirage
                     //  below too)
                     if (ownerWritten > 0)
                     {
-                        INetworkPlayer player;
-
-                        if (identity.IsServer)
-                            player = identity.Owner;
-                        else if (identity.HasAuthority)
-                            player = identity.Client.Player;
-                        else
-                            throw new InvalidOperationException("Should be server or have auth if sending to OwnerWriter");
-
-                        if (player != null && player.SceneIsReady)
-                        {
-                            varsMessage.payload = ownerWriter.ToArraySegment();
-                            player.Send(varsMessage);
-                        }
+                        SendToRemoteOwner(identity, ownerWriter, varsMessage);
                     }
 
                     // send observersWriter to everyone but owner
                     // (only if we serialized anything for observers)
                     if (observersWritten > 0)
                     {
-                        varsMessage.payload = observersWriter.ToArraySegment();
+                        varsMessage.Payload = observersWriter.ToArraySegment();
                         identity.SendToRemoteObservers(varsMessage, false);
                     }
 
@@ -123,6 +110,31 @@ namespace Mirage
                     // TODO move this inside OnSerializeAll
                     identity.ClearShouldSyncDirtyOnly();
                 }
+            }
+        }
+
+        private static void SendToRemoteOwner(NetworkIdentity identity, PooledNetworkWriter ownerWriter, UpdateVarsMessage varsMessage)
+        {
+            INetworkPlayer player;
+
+            if (identity.IsServer)
+            {
+                player = identity.Owner;
+
+                // if target player is host, dont send
+                if (player == identity.Server.LocalPlayer)
+                    return;
+            }
+            else if (identity.HasAuthority) // client only and auth
+                player = identity.Client.Player;
+            else
+                throw new InvalidOperationException("Should be server or have auth if sending to OwnerWriter");
+
+            // check player is ready
+            if (player != null && player.SceneIsReady)
+            {
+                varsMessage.Payload = ownerWriter.ToArraySegment();
+                player.Send(varsMessage);
             }
         }
     }

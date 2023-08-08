@@ -1,4 +1,5 @@
 using System;
+using Mirage.CodeGen;
 using Mirage.Weaver.NetworkBehaviours;
 using Mirage.Weaver.Serialization;
 using Mirage.Weaver.SyncVars;
@@ -226,20 +227,34 @@ namespace Mirage.Weaver
             if (syncVar.HasHook)
             {
                 //if (base.isLocalClient && !getSyncVarHookGuard(dirtyBit))
-                var label = worker.Create(OpCodes.Nop);
-                worker.Append(worker.Create(OpCodes.Ldarg_0));
-                // if invokeOnServer, then `IsServer` will also cover the Host case too so we dont need to use an OR here
-                if (syncVar.InvokeHookOnServer)
-                    worker.Append(worker.Create(OpCodes.Call, (NetworkBehaviour nb) => nb.IsServer));
-                else
-                    worker.Append(worker.Create(OpCodes.Call, (NetworkBehaviour nb) => nb.IsLocalClient));
+                var afterIf = worker.Create(OpCodes.Nop);
+                var startIf = worker.Create(OpCodes.Nop);
 
-                worker.Append(worker.Create(OpCodes.Brfalse, label));
+                // check if there is guard
                 worker.Append(worker.Create(OpCodes.Ldarg_0));
                 worker.Append(worker.Create(OpCodes.Ldc_I8, syncVar.DirtyBit));
                 worker.Append(worker.Create<NetworkBehaviour>(OpCodes.Call, nb => nb.GetSyncVarHookGuard(default)));
-                worker.Append(worker.Create(OpCodes.Brtrue, label));
+                worker.Append(worker.Create(OpCodes.Brtrue, afterIf));
 
+                if (syncVar.InvokeHookOnOwner)
+                {
+                    worker.Append(worker.Create(OpCodes.Ldarg_0));
+                    worker.Append(worker.Create(OpCodes.Call, (NetworkBehaviour nb) => nb.HasAuthority));
+                    // if true, go to start of if
+                    // this will act as an OR for the IsServer check
+                    worker.Append(worker.Create(OpCodes.Brtrue, startIf));
+                }
+
+                worker.Append(worker.Create(OpCodes.Ldarg_0));
+                if (syncVar.InvokeHookOnServer)
+                    // if invokeOnServer, then `IsServer` will also cover the Host case too so we dont need to use an OR here
+                    worker.Append(worker.Create(OpCodes.Call, (NetworkBehaviour nb) => nb.IsServer));
+                else
+                    worker.Append(worker.Create(OpCodes.Call, (NetworkBehaviour nb) => nb.IsLocalClient));
+                worker.Append(worker.Create(OpCodes.Brfalse, afterIf));
+
+
+                worker.Append(startIf);
                 // setSyncVarHookGuard(dirtyBit, true)
                 worker.Append(worker.Create(OpCodes.Ldarg_0));
                 worker.Append(worker.Create(OpCodes.Ldc_I8, syncVar.DirtyBit));
@@ -257,7 +272,7 @@ namespace Mirage.Weaver
                 worker.Append(worker.Create(OpCodes.Ldc_I4_0));
                 worker.Append(worker.Create<NetworkBehaviour>(OpCodes.Call, nb => nb.SetSyncVarHookGuard(default, default)));
 
-                worker.Append(label);
+                worker.Append(afterIf);
             }
 
             worker.Append(endOfMethod);
@@ -348,22 +363,20 @@ namespace Mirage.Weaver
         private void WriteCallHook(ILProcessor worker, SyncVarHook hook, VariableDefinition oldValue, FoundSyncVar syncVarField)
         {
             if (hook.Method != null)
-                WriteCallHookMethod(worker, hook.Method, hook.hookType, oldValue, syncVarField);
+                WriteCallHookMethod(worker, hook.Method, hook.ArgCount, oldValue, syncVarField);
             if (hook.Event != null)
-                WriteCallHookEvent(worker, hook.Event, hook.hookType, oldValue, syncVarField);
+                WriteCallHookEvent(worker, hook.Event, hook.ArgCount, oldValue, syncVarField);
         }
 
-        private void WriteCallHookMethod(ILProcessor worker, MethodDefinition hookMethod, SyncHookType hookType, VariableDefinition oldValue, FoundSyncVar syncVarField)
+        private void WriteCallHookMethod(ILProcessor worker, MethodDefinition hookMethod, int argCount, VariableDefinition oldValue, FoundSyncVar syncVarField)
         {
-            if (hookType != SyncHookType.MethodWith1Arg && hookType != SyncHookType.MethodWith2Arg)
-                throw new ArgumentException($"hook type should be method, but was {hookType}", nameof(hookType));
-
             WriteStartFunctionCall();
 
             // write args
-            if (hookType == SyncHookType.MethodWith2Arg)
+            if (argCount >= 2)
                 WriteOldValue();
-            WriteNewValue();
+            if (argCount >= 1)
+                WriteNewValue();
 
             WriteEndFunctionCall();
 
@@ -419,22 +432,33 @@ namespace Mirage.Weaver
             }
         }
 
-        private void WriteCallHookEvent(ILProcessor worker, EventDefinition @event, SyncHookType hookType, VariableDefinition oldValue, FoundSyncVar syncVarField)
+        private void WriteCallHookEvent(ILProcessor worker, EventDefinition @event, int argCount, VariableDefinition oldValue, FoundSyncVar syncVarField)
         {
-            if (hookType != SyncHookType.EventWith1Arg && hookType != SyncHookType.EventWith2Arg)
-                throw new ArgumentException($"hook type should be event, but was {hookType}", nameof(hookType));
-
             // get backing field for event, and sure it is generic instance (eg MyType<T>.myEvent
             var eventField = @event.DeclaringType.GetField(@event.Name).MakeHostGenericIfNeeded();
 
             // get action type with number of args
-            var actionType = hookType == SyncHookType.EventWith1Arg
-                ? typeof(Action<>)
-                : typeof(Action<,>);
+            Type actionType;
+            switch (argCount)
+            {
+                case 0:
+                    actionType = typeof(Action);
+                    break;
+                case 1:
+                    actionType = typeof(Action<>);
+                    break;
+                case 2:
+                    actionType = typeof(Action<,>);
+                    break;
+                default:
+                    throw new ArgumentException("SyncVarHook can only have 0, 1 or 2 arguments");
+
+            }
 
             // get Invoke method and make it correct type
-            var invokeNonGeneric = module.ImportReference(actionType.GetMethod("Invoke"));
-            var invoke = invokeNonGeneric.MakeHostInstanceGeneric((GenericInstanceType)@event.EventType);
+            var invoke = module.ImportReference(actionType.GetMethod("Invoke"));
+            if (@event.EventType.IsGenericInstance)
+                invoke = invoke.MakeHostInstanceGeneric((GenericInstanceType)@event.EventType);
 
             var nopEvent = worker.Create(OpCodes.Nop);
             var nopEnd = worker.Create(OpCodes.Nop);
@@ -454,9 +478,10 @@ namespace Mirage.Weaver
             // **call invoke**
             worker.Append(nopEvent);
 
-            if (hookType == SyncHookType.EventWith2Arg)
+            if (argCount >= 2)
                 WriteOldValue();
-            WriteNewValue();
+            if (argCount >= 1)
+                WriteNewValue();
 
             worker.Append(worker.Create(OpCodes.Call, invoke));
 
@@ -488,27 +513,25 @@ namespace Mirage.Weaver
 
         private void GenerateSerialization()
         {
-            Weaver.DebugLog(behaviour.TypeDefinition, "  GenerateSerialization");
-
-            // Dont create method if users has manually overridden it
-            if (behaviour.HasManualSerializeOverride())
-                return;
+            Weaver.DebugLog(behaviour.TypeDefinition, "GenerateSerialization");
 
             // dont create if there are no syncvars
             if (behaviour.SyncVars.Count == 0)
                 return;
 
             var helper = new SerializeHelper(module, behaviour);
-            var worker = helper.AddMethod();
 
-            helper.AddLocals();
-            helper.WriteBaseCall();
+            // Dont create method if users has manually overridden it
+            if (helper.HasManualOverride())
+                return;
+
+            helper.AddMethod();
 
             helper.WriteIfInitial(() =>
             {
                 foreach (var syncVar in behaviour.SyncVars)
                 {
-                    WriteFromField(worker, helper.WriterParameter, syncVar);
+                    WriteFromField(helper.Worker, helper.WriterParameter, syncVar);
                 }
             });
 
@@ -526,7 +549,7 @@ namespace Mirage.Weaver
                 helper.WriteIfSyncVarDirty(syncVar, () =>
                 {
                     // Generates a call to the writer for that field
-                    WriteFromField(worker, helper.WriterParameter, syncVar);
+                    WriteFromField(helper.Worker, helper.WriterParameter, syncVar);
                 });
             }
 
@@ -544,22 +567,19 @@ namespace Mirage.Weaver
 
         private void GenerateDeserialization()
         {
-            Weaver.DebugLog(behaviour.TypeDefinition, "  GenerateDeSerialization");
-
-            // Dont create method if users has manually overridden it
-            if (behaviour.HasManualDeserializeOverride())
-                return;
+            Weaver.DebugLog(behaviour.TypeDefinition, "GenerateDeSerialization");
 
             // dont create if there are no syncvars
             if (behaviour.SyncVars.Count == 0)
                 return;
 
-
             var helper = new DeserializeHelper(module, behaviour);
-            var worker = helper.AddMethod();
 
-            helper.AddLocals();
-            helper.WriteBaseCall();
+            // Dont create method if users has manually overridden it
+            if (helper.HasManualOverride())
+                return;
+
+            helper.AddMethod();
 
             helper.WriteIfInitial(() =>
             {
@@ -569,13 +589,13 @@ namespace Mirage.Weaver
                 {
                     var syncVar = behaviour.SyncVars[i];
                     // StartHook create old value local variable,
-                    oldValues[i] = StartHook(worker, helper.Method, syncVar, syncVar.OriginalType);
-                    ReadToField(worker, helper.ReaderParameter, syncVar);
+                    oldValues[i] = StartHook(helper.Worker, helper.Method, syncVar, syncVar.OriginalType);
+                    ReadToField(helper.Worker, helper.ReaderParameter, syncVar);
                 }
                 for (var i = 0; i < behaviour.SyncVars.Count; i++)
                 {
                     var syncVar = behaviour.SyncVars[i];
-                    EndHook(worker, syncVar, syncVar.OriginalType, oldValues[i]);
+                    EndHook(helper.Worker, syncVar, syncVar.OriginalType, oldValues[i]);
                 }
             });
 
@@ -589,14 +609,14 @@ namespace Mirage.Weaver
 
                 helper.WriteIfSyncVarDirty(syncVar, () =>
                 {
-                    var oldValue = StartHook(worker, helper.Method, syncVar, syncVar.OriginalType);
+                    var oldValue = StartHook(helper.Worker, helper.Method, syncVar, syncVar.OriginalType);
                     // read value and store in syncvar BEFORE calling the hook
-                    ReadToField(worker, helper.ReaderParameter, syncVar);
-                    EndHook(worker, syncVar, syncVar.OriginalType, oldValue);
+                    ReadToField(helper.Worker, helper.ReaderParameter, syncVar);
+                    EndHook(helper.Worker, syncVar, syncVar.OriginalType, oldValue);
                 });
             }
 
-            worker.Append(worker.Create(OpCodes.Ret));
+            helper.Worker.Emit(OpCodes.Ret);
         }
 
         /// <summary>
@@ -650,7 +670,18 @@ namespace Mirage.Weaver
                 // didn't change from the default values on the client.
 
                 // Generates: if (!SyncVarEqual)
-                var syncVarEqualLabel = worker.Create(OpCodes.Nop);
+                var endHookInvoke = worker.Create(OpCodes.Nop);
+
+                // if not invoke on server, then we need to add a if (!isServer) check
+                // this is because onDeserialize can be called on server when syncdirection is from Owner
+                if (!syncVar.InvokeHookOnServer)
+                {
+                    worker.Append(worker.Create(OpCodes.Ldarg_0));
+                    worker.Append(worker.Create(OpCodes.Call, (NetworkBehaviour nb) => nb.IsServer));
+                    // if true, go to start of if
+                    // this will act as an OR for the IsServer check
+                    worker.Append(worker.Create(OpCodes.Brtrue, endHookInvoke));
+                }
 
                 // 'this.' for 'this.SyncVarEqual'
                 worker.Append(worker.Create(OpCodes.Ldarg_0));
@@ -663,14 +694,14 @@ namespace Mirage.Weaver
                 var syncVarEqualGm = new GenericInstanceMethod(syncVarEqual.GetElementMethod());
                 syncVarEqualGm.GenericArguments.Add(originalType);
                 worker.Append(worker.Create(OpCodes.Call, syncVarEqualGm));
-                worker.Append(worker.Create(OpCodes.Brtrue, syncVarEqualLabel));
+                worker.Append(worker.Create(OpCodes.Brtrue, endHookInvoke));
 
                 // call the hook
                 // Generates: OnValueChanged(oldValue, this.syncVar)
                 WriteCallHookMethodUsingField(worker, syncVar.Hook, oldValue, syncVar);
 
                 // Generates: end if (!SyncVarEqual)
-                worker.Append(syncVarEqualLabel);
+                worker.Append(endHookInvoke);
             }
 
         }

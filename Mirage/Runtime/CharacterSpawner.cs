@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using Mirage.Logging;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityEngine.Serialization;
 
 namespace Mirage
 {
@@ -11,28 +10,29 @@ namespace Mirage
     /// <summary>
     /// Spawns a player as soon as the connection is authenticated
     /// </summary>
+    [HelpURL("https://miragenet.github.io/Mirage/docs/guides/game-objects/spawn-player/")]
+    [AddComponentMenu("Network/CharacterSpawner")]
     public class CharacterSpawner : MonoBehaviour
     {
         private static readonly ILogger logger = LogFactory.GetLogger(typeof(CharacterSpawner));
 
-        [FormerlySerializedAs("client")]
+        [Header("References")]
         public NetworkClient Client;
-        [FormerlySerializedAs("server")]
         public NetworkServer Server;
-        [FormerlySerializedAs("sceneManager")]
         public NetworkSceneManager SceneManager;
-        [FormerlySerializedAs("clientObjectManager")]
         public ClientObjectManager ClientObjectManager;
-        [FormerlySerializedAs("serverObjectManager")]
         public ServerObjectManager ServerObjectManager;
-        [FormerlySerializedAs("playerPrefab")]
+
+        [Header("Spawn")]
         public NetworkIdentity PlayerPrefab;
 
-        /// <summary>
-        /// Whether to span the player upon connection automatically
-        /// </summary>
+        [Tooltip("Whether to span the player upon connection automatically")]
         public bool AutoSpawn = true;
 
+        [Tooltip("Should the characters gameObject name be set when it is spawned")]
+        public bool SetName = true;
+
+        [Header("Location")]
         public int startPositionIndex;
 
         /// <summary>
@@ -162,7 +162,8 @@ namespace Mirage
                 ? Instantiate(PlayerPrefab, startPos.position, startPos.rotation)
                 : Instantiate(PlayerPrefab);
 
-            SetCharacterName(player, character);
+            if (SetName)
+                SetCharacterName(player, character);
             ServerObjectManager.AddCharacter(player, character.gameObject);
         }
 

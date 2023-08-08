@@ -8,10 +8,11 @@ namespace Mirage.Collections
     public class SyncStack<T> : IReadOnlyCollection<T>, IEnumerable<T>, ISyncObject
     {
         private readonly Stack<T> _objects;
-        private readonly IEqualityComparer<T> _comparer;
 
         public int Count => _objects.Count;
         public bool IsReadOnly { get; private set; }
+        void ISyncObject.SetShouldSyncFrom(bool shouldSync) => IsReadOnly = !shouldSync;
+        void ISyncObject.SetNetworkBehaviour(NetworkBehaviour networkBehaviour) { }
 
         /// <summary>
         /// Raised when an element is added to the list.
@@ -60,19 +61,13 @@ namespace Mirage.Collections
 
         internal int ChangeCount => _changes.Count;
 
-        public SyncStack() : this(EqualityComparer<T>.Default)
+        public SyncStack()
         {
-        }
-
-        public SyncStack(IEqualityComparer<T> comparer)
-        {
-            _comparer = comparer ?? EqualityComparer<T>.Default;
             _objects = new Stack<T>();
         }
 
-        public SyncStack(Stack<T> objects, IEqualityComparer<T> comparer = null)
+        public SyncStack(Stack<T> objects)
         {
-            _comparer = comparer ?? EqualityComparer<T>.Default;
             _objects = objects;
         }
 
@@ -92,10 +87,7 @@ namespace Mirage.Collections
 
         private void AddOperation(Operation op, T newItem)
         {
-            if (IsReadOnly)
-            {
-                throw new InvalidOperationException("Synclists can only be modified at the server");
-            }
+            SyncObjectUtils.ThrowIfReadOnly(IsReadOnly);
 
             var change = new Change
             {
@@ -143,9 +135,6 @@ namespace Mirage.Collections
         private static T[] _temp = Array.Empty<T>();
         public void OnDeserializeAll(NetworkReader reader)
         {
-            // This list can now only be modified by synchronization
-            IsReadOnly = true;
-
             // if init,  write the full list content
             var count = (int)reader.ReadPackedUInt32();
 
@@ -177,8 +166,6 @@ namespace Mirage.Collections
 
         public void OnDeserializeDelta(NetworkReader reader)
         {
-            // This list can now only be modified by synchronization
-            IsReadOnly = true;
             var raiseOnChange = false;
 
             var changesCount = (int)reader.ReadPackedUInt32();

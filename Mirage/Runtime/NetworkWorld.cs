@@ -34,7 +34,7 @@ namespace Mirage
         /// <summary>
         /// Raised when authority is given or removed from an identity. It is invoked on both server and client
         /// <para>
-        /// Can be used when you need to check for authorty on all objects, rather than adding an event to each object.
+        /// Can be used when you need to check for authority on all objects, rather than adding an event to each object.
         /// </para>
         /// </summary>
         public event AuthorityChanged OnAuthorityChanged;
@@ -103,7 +103,7 @@ namespace Mirage
             }
             else
             {
-                if (logger.LogEnabled()) logger.Log($"Did not remove [netId={netId}, name={identity?.name}] from World. Maybe it was previosuly removed?");
+                if (logger.LogEnabled()) logger.Log($"Did not remove [netId={netId}, name={identity?.name}] from World. Maybe it was previously removed?");
             }
         }
 
@@ -135,39 +135,6 @@ namespace Mirage
         public NetworkWorld()
         {
 
-        }
-    }
-
-    public static class NetworkWorldExtensions
-    {
-        /// <summary>
-        /// adds an event handler, and invokes it on current objects in world
-        /// </summary>
-        /// <param name="action"></param>
-        public static void AddAndInvokeOnSpawn(this NetworkWorld world, Action<NetworkIdentity> action)
-        {
-            world.onSpawn += action;
-            foreach (var identity in world.SpawnedIdentities)
-            {
-                action.Invoke(identity);
-            }
-        }
-
-        /// <summary>
-        /// adds an event handler, and invokes it on current objects in world
-        /// </summary>
-        /// <param name="action"></param>
-        public static void AddAndInvokeOnAuthorityChanged(this NetworkWorld world, AuthorityChanged action)
-        {
-            world.OnAuthorityChanged += action;
-            foreach (var identity in world.SpawnedIdentities)
-            {
-                if (identity.HasAuthority)
-                {
-                    // owner might be null, but that is fine
-                    action.Invoke(identity, true, identity.Owner);
-                }
-            }
         }
     }
 }

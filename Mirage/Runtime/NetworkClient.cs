@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using Mirage.Authentication;
 using Mirage.Events;
 using Mirage.Logging;
 using Mirage.Serialization;
@@ -20,6 +22,7 @@ namespace Mirage
     /// <para><see cref="NetworkClient">NetworkClient</see> has an internal update function where it handles events from the transport layer. This includes asynchronous connect events, disconnect events and incoming data from a server.</para>
     /// </summary>
     [AddComponentMenu("Network/NetworkClient")]
+    [HelpURL("https://miragenet.github.io/Mirage/docs/reference/Mirage/NetworkClient")]
     [DisallowMultipleComponent]
     public class NetworkClient : MonoBehaviour, IMessageSender
     {
@@ -30,6 +33,7 @@ namespace Mirage
         public int MetricsSize = 10;
         public Metrics Metrics { get; private set; }
 
+
         /// <summary>
         /// Config for peer, if not set will use default settings
         /// </summary>
@@ -38,7 +42,11 @@ namespace Mirage
         [Tooltip("Creates Socket for Peer to use")]
         public SocketFactory SocketFactory;
 
+        public ClientObjectManager ObjectManager;
+
         public bool DisconnectOnException = true;
+        [Tooltip("Should the message handler rethrow the exception after logging. This should only be used when deubgging as it may stop other Mirage functions from running after messages handling")]
+        public bool RethrowException = false;
 
         [Tooltip("If true will set Application.runInBackground")]
         public bool RunInBackground = true;
@@ -46,7 +54,7 @@ namespace Mirage
         private Peer _peer;
 
         [Tooltip("Authentication component attached to this object")]
-        public NetworkAuthenticator authenticator;
+        public AuthenticatorSettings Authenticator;
 
         [Header("Events")]
         [SerializeField] private AddLateEvent _started = new AddLateEvent();
@@ -129,7 +137,7 @@ namespace Mirage
 
             var socket = SocketFactory.CreateClientSocket();
             var maxPacketSize = SocketFactory.MaxPacketSize;
-            MessageHandler = new MessageHandler(World, DisconnectOnException);
+            MessageHandler = new MessageHandler(World, DisconnectOnException, RethrowException);
             var dataHandler = new DataHandler(MessageHandler);
             Metrics = EnablePeerMetrics ? new Metrics(MetricsSize) : null;
 
@@ -148,12 +156,16 @@ namespace Mirage
                 Application.runInBackground = RunInBackground;
 
             // setup all the handlers
-            Player = new NetworkPlayer(connection);
+            Player = new NetworkPlayer(connection, false);
             dataHandler.SetConnection(connection, Player);
 
             RegisterMessageHandlers();
-            InitializeAuthEvents();
+
+            Authenticate();
+
             // invoke started event after everything is set up, but before peer has connected
+            if (ObjectManager != null)
+                ObjectManager.ClientStarted(this);
             _started.Invoke();
         }
 
@@ -172,7 +184,9 @@ namespace Mirage
 
         private void Peer_OnConnected(IConnection conn)
         {
-            World.Time.UpdateClient(this);
+            if (!IsLocalClient)
+                World.Time.UpdateClient(this);
+
             _connectState = ConnectState.Connected;
             _connected.Invoke(Player);
         }
@@ -210,17 +224,18 @@ namespace Mirage
             World = server.World;
 
             // create local connection objects and connect them
-            MessageHandler = new MessageHandler(World, DisconnectOnException);
+            MessageHandler = new MessageHandler(World, DisconnectOnException, RethrowException);
             var dataHandler = new DataHandler(MessageHandler);
             (var clientConn, var serverConn) = PipePeerConnection.Create(dataHandler, serverDataHandler, OnHostDisconnected, null);
 
             // set up client before connecting to server, server could invoke handlers
             IsLocalClient = true;
-            Player = new NetworkPlayer(clientConn);
+            Player = new NetworkPlayer(clientConn, true);
             dataHandler.SetConnection(clientConn, Player);
-            RegisterHostHandlers();
-            InitializeAuthEvents();
+
             // invoke started event after everything is set up, but before peer has connected
+            if (ObjectManager != null)
+                ObjectManager.ClientStarted(this);
             _started.Invoke();
 
             // we need add server connection to server's dictionary first
@@ -229,29 +244,44 @@ namespace Mirage
 
             server.AddLocalConnection(this, serverConn);
             Peer_OnConnected(clientConn);
-            server.InvokeLocalConnected();
+            Authenticate();
         }
 
-        private void InitializeAuthEvents()
+        private void Authenticate()
         {
-            if (authenticator != null)
-            {
-                authenticator.OnClientAuthenticated += OnAuthenticated;
-                authenticator.ClientSetup(this);
+            // client wants to wait for auth message even if there is no Authenticators
+            // this makes host setup easier,
+            // rather than doing checks and making sure functions are ivnoked in correct order
+            // we can just use the same logic as normal clients
+            // this will cause both server and client to call SetAuthentication first,
+            // and then invoke Authenticated after
 
-                Connected.AddListener(authenticator.ClientAuthenticate);
-            }
-            else
-            {
-                // if no authenticator, consider connection as authenticated
-                Connected.AddListener(OnAuthenticated);
-            }
+            var waiter = new MessageWaiter<AuthSuccessMessage>(this, allowUnauthenticated: true);
+            // DONT use async here
+            // we need to invoke set data and invoke _authenticated right away
+            // this is because messages received after AuthSuccessMessage (from server) assume the client is now authenticated
+            // but if we use async, we wont set Authentication until next update, causing message to be received or dropped (or kicked from Unauthenticated)
+            waiter.Callback(AuthenticationSuccessCallback);
         }
 
-        internal void OnAuthenticated(INetworkPlayer player)
+        private void AuthenticationSuccessCallback(INetworkPlayer _, AuthSuccessMessage message)
         {
-            _authenticated.Invoke(player);
+            if (logger.LogEnabled()) logger.Log($"Authentication successful with {message.AuthenticatorName}");
+
+            INetworkAuthenticator authenticator = null;
+            // only need to check if server sent its name
+            if (!string.IsNullOrEmpty(message.AuthenticatorName))
+            {
+                if (Authenticator == null)
+                    throw new InvalidOperationException("Authenticator set on server but not client");
+
+                authenticator = Authenticator.Authenticators.FirstOrDefault(x => x.AuthenticatorName == message.AuthenticatorName);
+            }
+
+            Player.SetAuthentication(new PlayerAuthentication(authenticator, null));
+            _authenticated.Invoke(Player);
         }
+
 
         private void OnDestroy()
         {
@@ -340,14 +370,9 @@ namespace Mirage
             _peer?.UpdateSent();
         }
 
-        internal void RegisterHostHandlers()
-        {
-            MessageHandler.RegisterHandler<NetworkPongMessage>(msg => { });
-        }
-
         internal void RegisterMessageHandlers()
         {
-            MessageHandler.RegisterHandler<NetworkPongMessage>(World.Time.OnClientPong);
+            MessageHandler.RegisterHandler<NetworkPongMessage>(World.Time.OnClientPong, allowUnauthenticated: true);
         }
 
         /// <summary>
@@ -361,17 +386,6 @@ namespace Mirage
             IsLocalClient = false;
 
             _connectState = ConnectState.Disconnected;
-
-            if (authenticator != null)
-            {
-                authenticator.OnClientAuthenticated -= OnAuthenticated;
-                Connected.RemoveListener(authenticator.ClientAuthenticate);
-            }
-            else
-            {
-                // if no authenticator, consider connection as authenticated
-                Connected.RemoveListener(OnAuthenticated);
-            }
 
             Player = null;
             _connected.Reset();

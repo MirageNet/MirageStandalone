@@ -1,12 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 
 namespace Mirage
 {
-
-    #region Public System Messages
-
     /// <summary>
     /// Sent to client to mark their scene as not ready
     /// <para>Client can sent <see cref="SceneReadyMessage"/> once its scene is ready again</para>
@@ -32,130 +30,143 @@ namespace Mirage
     [NetworkMessage]
     public struct SceneReadyMessage { }
 
-    #endregion
 
-    #region System Messages required for code gen path
-    [NetworkMessage]
-    public struct ServerRpcMessage
-    {
-        public uint netId;
-        public int componentIndex;
-        public int functionIndex;
-
-        // the parameters for the Cmd function
-        // -> ArraySegment to avoid unnecessary allocations
-        public ArraySegment<byte> payload;
-    }
-
-    [NetworkMessage]
-    public struct ServerRpcWithReplyMessage
-    {
-        public uint netId;
-        public int componentIndex;
-        public int functionIndex;
-
-        // if the server Rpc can return values
-        // this then a ServerRpcReply will be sent with this id
-        public int replyId;
-        // the parameters for the Cmd function
-        // -> ArraySegment to avoid unnecessary allocations
-        public ArraySegment<byte> payload;
-    }
-
-    [NetworkMessage]
-    public struct ServerRpcReply
-    {
-        public int replyId;
-        public ArraySegment<byte> payload;
-    }
-
-    [NetworkMessage]
-    public struct RpcMessage
-    {
-        public uint netId;
-        public int componentIndex;
-        public int functionIndex;
-        // the parameters for the Cmd function
-        // -> ArraySegment to avoid unnecessary allocations
-        public ArraySegment<byte> payload;
-    }
-    #endregion
-
-    #region Internal System Messages
     [NetworkMessage]
     public struct SpawnMessage
     {
         /// <summary>
         /// netId of new or existing object
         /// </summary>
-        public uint netId;
+        public uint NetId;
         /// <summary>
         /// Is the spawning object the local player. Sets ClientScene.localPlayer
         /// </summary>
-        public bool isLocalPlayer;
+        public bool IsLocalPlayer;
         /// <summary>
         /// Sets hasAuthority on the spawned object
         /// </summary>
-        public bool isOwner;
+        public bool IsOwner;
         /// <summary>
         /// The id of the scene object to spawn
         /// </summary>
-        public ulong? sceneId;
+        public ulong? SceneId;
         /// <summary>
         /// The id of the prefab to spawn
         /// <para>If sceneId != 0 then it is used instead of prefabHash</para>
         /// </summary>
-        public int? prefabHash;
+        public int? PrefabHash;
+
         /// <summary>
-        /// Local position
+        /// Spawn values to set after spawning object, values based on <see cref="NetworkIdentity.TransformSpawnSettings"/>
         /// </summary>
-        public Vector3? position;
-        /// <summary>
-        /// Local rotation
-        /// </summary>
-        public Quaternion? rotation;
-        /// <summary>
-        /// Local scale
-        /// </summary>
-        public Vector3? scale;
+        public SpawnValues SpawnValues;
+
         /// <summary>
         /// The serialized component data
         /// <remark>ArraySegment to avoid unnecessary allocations</remark>
         /// </summary>
-        public ArraySegment<byte> payload;
+        public ArraySegment<byte> Payload;
+
+        public override string ToString()
+        {
+            string spawnIDStr;
+            if (SceneId.HasValue)
+                spawnIDStr = $"SceneId:{SceneId.Value}";
+            else if (PrefabHash.HasValue)
+                spawnIDStr = $"PrefabHash:{PrefabHash.Value:X}";
+            else
+                spawnIDStr = $"SpawnId:Error";
+
+            string authStr;
+            if (IsLocalPlayer)
+                authStr = "LocalPlayer";
+            else if (IsOwner)
+                authStr = "Owner";
+            else
+                authStr = "Remote";
+
+            return $"SpawnMessage[NetId:{NetId},{spawnIDStr},Authority:{authStr},{SpawnValues},Payload:{Payload.Count}bytes]";
+        }
     }
+
+    public struct SpawnValues
+    {
+        public Vector3? Position;
+        public Quaternion? Rotation;
+        public Vector3? Scale;
+        public string Name;
+        public bool? SelfActive;
+
+        [ThreadStatic]
+        private static StringBuilder builder;
+
+        public override string ToString()
+        {
+            if (builder == null)
+                builder = new StringBuilder();
+            else
+                builder.Clear();
+
+            builder.Append("SpawnValues(");
+            var first = true;
+
+            if (Position.HasValue)
+                Append(ref first, $"Position={Position.Value}");
+
+            if (Rotation.HasValue)
+                Append(ref first, $"Rotation={Rotation.Value}");
+
+            if (Scale.HasValue)
+                Append(ref first, $"Scale={Scale.Value}");
+
+            if (!string.IsNullOrEmpty(Name))
+                Append(ref first, $"Name={Name}");
+
+            if (SelfActive.HasValue)
+                Append(ref first, $"SelfActive={SelfActive.Value}");
+
+            builder.Append(")");
+            return builder.ToString();
+        }
+
+        private static void Append(ref bool first, string value)
+        {
+            if (!first) builder.Append(", ");
+            first = false;
+            builder.Append(value);
+        }
+    }
+
 
     [NetworkMessage]
     public struct RemoveAuthorityMessage
     {
-        public uint netId;
+        public uint NetId;
     }
 
     [NetworkMessage]
     public struct RemoveCharacterMessage
     {
-        public bool keepAuthority;
+        public bool KeepAuthority;
     }
 
     [NetworkMessage]
     public struct ObjectDestroyMessage
     {
-        public uint netId;
+        public uint NetId;
     }
 
     [NetworkMessage]
     public struct ObjectHideMessage
     {
-        public uint netId;
+        public uint NetId;
     }
 
     [NetworkMessage]
     public struct UpdateVarsMessage
     {
-        public uint netId;
-        // the serialized component data
-        // -> ArraySegment to avoid unnecessary allocations
-        public ArraySegment<byte> payload;
+        public uint NetId;
+        public ArraySegment<byte> Payload;
     }
 
     // A client sends this message to the server
@@ -163,7 +174,7 @@ namespace Mirage
     [NetworkMessage]
     public struct NetworkPingMessage
     {
-        public double clientTime;
+        public double ClientTime;
     }
 
     // The server responds with this message
@@ -171,8 +182,7 @@ namespace Mirage
     [NetworkMessage]
     public struct NetworkPongMessage
     {
-        public double clientTime;
-        public double serverTime;
+        public double ClientTime;
+        public double ServerTime;
     }
-    #endregion
 }

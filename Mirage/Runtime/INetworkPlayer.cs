@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
+using Mirage.Authentication;
 using Mirage.SocketLayer;
 
 namespace Mirage
@@ -17,20 +19,28 @@ namespace Mirage
     // delegates to give names to variables in handles
     public delegate void MessageDelegate<in T>(T message);
     public delegate void MessageDelegateWithPlayer<in T>(INetworkPlayer player, T message);
+    public delegate UniTaskVoid MessageDelegateAsync<in T>(T message);
+    public delegate UniTaskVoid MessageDelegateWithPlayerAsync<in T>(INetworkPlayer player, T message);
+
 
     /// <summary>
     /// An object that can receive messages
     /// </summary>
     public interface IMessageReceiver
     {
-        void RegisterHandler<T>(MessageDelegateWithPlayer<T> handler);
-
-        void RegisterHandler<T>(MessageDelegate<T> handler);
-
+        /// <summary>
+        /// Registers a handler for a network message that has INetworkPlayer and <typeparamref name="T"/> Message parameters
+        /// <para>
+        /// When network message are sent, the first 2 bytes are the Id for the type <typeparamref name="T"/>.
+        /// When message is received the <paramref name="handler"/> with the matching Id is found and invoked
+        /// </para>
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="handler"></param>
+        /// <param name="allowUn authenticated">set this to true to allow message to be invoked before player is authenticated</param>
+        void RegisterHandler<T>(MessageDelegateWithPlayer<T> handler, bool allowUnauthenticated);
         void UnregisterHandler<T>();
-
         void ClearHandlers();
-
         void HandleMessage(INetworkPlayer player, ArraySegment<byte> packet);
     }
 
@@ -90,27 +100,20 @@ namespace Mirage
     /// An object owned by a player that can: send/receive messages, have network visibility, be an object owner, authenticated permissions, and load scenes.
     /// May be from the server to client or from client to server
     /// </summary>
-    public interface INetworkPlayer : IMessageSender, IVisibilityTracker, IObjectOwner, IAuthenticatedObject, ISceneLoader
+    public interface INetworkPlayer : IMessageSender, IVisibilityTracker, IObjectOwner, ISceneLoader
     {
         SocketLayer.IEndPoint Address { get; }
         SocketLayer.IConnection Connection { get; }
+        PlayerAuthentication Authentication { get; }
+        void SetAuthentication(PlayerAuthentication authentication, bool allowReplace = false);
+        bool IsAuthenticated { get; }
+        /// <summary>
+        /// True if this Player is the local player on the server or client
+        /// </summary>
+        bool IsHost { get; }
 
         void Disconnect();
         void MarkAsDisconnected();
-    }
-
-    public interface IAuthenticatedObject
-    {
-        /// <summary>
-        /// Marks if this player has been accepted by a <see cref="NetworkAuthenticator"/>
-        /// </summary>
-        bool IsAuthenticated { get; set; }
-
-        /// <summary>
-        /// General purpose object to hold authentication data, character selection, tokens, etc.
-        /// associated with the connection for reference after Authentication completes.
-        /// </summary>
-        object AuthenticationData { get; set; }
     }
 
     public interface ISceneLoader

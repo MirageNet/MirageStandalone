@@ -8,24 +8,35 @@ namespace Mirage
 {
     public class MessageHandler : IMessageReceiver
     {
-        private static readonly ILogger logger = LogFactory.GetLogger(typeof(MessageHandler));
+        private static readonly ILogger logger = LogFactory.GetLogger<MessageHandler>();
 
         private readonly bool _disconnectOnException;
+        private readonly bool _rethrowException = false;
         private readonly IObjectLocator _objectLocator;
 
-        /// <summary>
-        /// Handles network messages on client and server
-        /// </summary>
-        /// <param name="player"></param>
-        /// <param name="reader"></param>
-        internal delegate void NetworkMessageDelegate(INetworkPlayer player, NetworkReader reader);
+        internal readonly Dictionary<int, Handler> _messageHandlers = new Dictionary<int, Handler>();
 
-        internal readonly Dictionary<int, NetworkMessageDelegate> _messageHandlers = new Dictionary<int, NetworkMessageDelegate>();
-
-        public MessageHandler(IObjectLocator objectLocator, bool disconnectOnException)
+        public MessageHandler(IObjectLocator objectLocator, bool disconnectOnException, bool rethrowException = false)
         {
             _disconnectOnException = disconnectOnException;
             _objectLocator = objectLocator;
+            _rethrowException = rethrowException;
+        }
+
+        public void RegisterHandler<T>(MessageDelegateWithPlayer<T> handler, bool allowUnauthenticated)
+        {
+            var msgId = MessagePacker.GetId<T>();
+
+            if (logger.LogEnabled())
+            {
+                if (_messageHandlers.ContainsKey(msgId))
+                    logger.Log($"Replacing handler for id:{msgId} type:{typeof(T)}");
+                else
+                    logger.Log($"New handler for id:{msgId} type:{typeof(T)}");
+            }
+
+            var del = MessageWrapper(handler);
+            _messageHandlers[msgId] = new Handler(del, allowUnauthenticated);
         }
 
         private static NetworkMessageDelegate MessageWrapper<T>(MessageDelegateWithPlayer<T> handler)
@@ -34,36 +45,11 @@ namespace Mirage
             {
                 var message = NetworkDiagnostics.ReadWithDiagnostics<T>(reader);
 
+                if (logger.LogEnabled()) logger.Log($"Receiving {typeof(T)} from {player}");
+
                 handler.Invoke(player, message);
             }
             return AdapterFunction;
-        }
-
-        /// <summary>
-        /// Register a handler for a particular message type.
-        /// <para>There are several system message types which you can add handlers for. You can also add your own message types.</para>
-        /// </summary>
-        /// <typeparam name="T">Message type</typeparam>
-        /// <param name="handler">Function handler which will be invoked for when this message type is received.</param>
-        public void RegisterHandler<T>(MessageDelegateWithPlayer<T> handler)
-        {
-            var msgType = MessagePacker.GetId<T>();
-            if (logger.filterLogType == LogType.Log && _messageHandlers.ContainsKey(msgType))
-            {
-                logger.Log($"RegisterHandler replacing {msgType}");
-            }
-            _messageHandlers[msgType] = MessageWrapper(handler);
-        }
-
-        /// <summary>
-        /// Register a handler for a particular message type.
-        /// <para>There are several system message types which you can add handlers for. You can also add your own message types.</para>
-        /// </summary>
-        /// <typeparam name="T">Message type</typeparam>
-        /// <param name="handler">Function handler which will be invoked for when this message type is received.</param>
-        public void RegisterHandler<T>(MessageDelegate<T> handler)
-        {
-            RegisterHandler<T>((_, value) => handler.Invoke(value));
         }
 
         /// <summary>
@@ -83,29 +69,6 @@ namespace Mirage
         public void ClearHandlers()
         {
             _messageHandlers.Clear();
-        }
-
-
-        internal void InvokeHandler(INetworkPlayer player, int msgType, NetworkReader reader)
-        {
-            if (_messageHandlers.TryGetValue(msgType, out var msgDelegate))
-            {
-                msgDelegate.Invoke(player, reader);
-            }
-            else
-            {
-                if (MessagePacker.MessageTypes.TryGetValue(msgType, out var type))
-                {
-                    // this means we received a Message that has a struct, but no handler, It is likely that the developer forgot to register a handler or sent it by mistake
-                    // we want this to be warning level
-                    if (logger.WarnEnabled()) logger.LogWarning($"Unexpected message {type} received from {player}. Did you register a handler for it?");
-                }
-                else
-                {
-                    // todo maybe we should handle it differently? we dont want someone spaming ids to find a handler they can do stuff with...
-                    if (logger.LogEnabled()) logger.Log($"Unexpected message ID {msgType} received from {player}. May be due to no existing RegisterHandler for this message.");
-                }
-            }
         }
 
         public void HandleMessage(INetworkPlayer player, ArraySegment<byte> packet)
@@ -132,6 +95,10 @@ namespace Mirage
                 catch (Exception e)
                 {
                     LogAndCheckDisconnect(player, e);
+
+                    if (_rethrowException)
+                        // note, dont add Exception here, otherwise strack trace will be overritten
+                        throw;
                 }
             }
         }
@@ -143,6 +110,76 @@ namespace Mirage
             if (_disconnectOnException)
             {
                 player.Disconnect();
+            }
+        }
+
+        internal void InvokeHandler(INetworkPlayer player, int msgType, NetworkReader reader)
+        {
+            if (_messageHandlers.TryGetValue(msgType, out var handler))
+            {
+                if (CheckAuthenticaiton(player, msgType, handler))
+                    handler.Delegate.Invoke(player, reader);
+            }
+            else
+            {
+                if (MessagePacker.MessageTypes.TryGetValue(msgType, out var type))
+                {
+                    // this means we received a Message that has a struct, but no handler, It is likely that the developer forgot to register a handler or sent it by mistake
+                    // we want this to be warning level
+                    if (logger.WarnEnabled()) logger.LogWarning($"Unexpected message {type} received from {player}. Did you register a handler for it?");
+                }
+                else
+                {
+                    // todo maybe we should handle it differently? we dont want someone spaming ids to find a handler they can do stuff with...
+                    if (logger.LogEnabled()) logger.Log($"Unexpected message ID {msgType} received from {player}. May be due to no existing RegisterHandler for this message.");
+                }
+            }
+        }
+
+        private bool CheckAuthenticaiton(INetworkPlayer player, int msgType, Handler handler)
+        {
+            // always allowed
+            if (handler.AllowUnauthenticated)
+                return true;
+
+            // is authenticated
+            if (player.Authentication != null)
+                return true;
+
+            // not authenciated
+            // log and disconnect
+
+            // player is Unauthenticated so we dont trust them
+            // info log only, so attacker can force server to spam logs 
+            if (logger.LogEnabled())
+            {
+                // we know msgType is found (because we have hanlder), so we dont need if check for tryGet
+                MessagePacker.MessageTypes.TryGetValue(msgType, out var type);
+                logger.Log($"Unauthenticated Message {type} received from {player}, player is not Authenticated so handler will not be invoked");
+            }
+
+            logger.LogError("Disconnecting Unauthenticated player");
+            player.Disconnect();
+
+            return false;
+        }
+
+        /// <summary>
+        /// Handles network messages on client and server
+        /// </summary>
+        /// <param name="player"></param>
+        /// <param name="reader"></param>
+        internal delegate void NetworkMessageDelegate(INetworkPlayer player, NetworkReader reader);
+
+        internal class Handler
+        {
+            public readonly NetworkMessageDelegate Delegate;
+            public readonly bool AllowUnauthenticated;
+
+            public Handler(NetworkMessageDelegate @delegate, bool allowUnauthenticated)
+            {
+                Delegate = @delegate;
+                AllowUnauthenticated = allowUnauthenticated;
             }
         }
     }

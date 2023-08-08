@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Mirage.Events;
 using Mirage.Logging;
+using Mirage.RemoteCalls;
 using Mirage.Serialization;
 using UnityEngine;
 using UnityEngine.Serialization;
@@ -104,7 +105,7 @@ namespace Mirage
     {
         private static readonly ILogger logger = LogFactory.GetLogger<NetworkIdentity>();
 
-        public TransformSpawnSettings SpawnSettings = new TransformSpawnSettings(true, true, true);
+        public NetworkSpawnSettings SpawnSettings = NetworkSpawnSettings.Default;
 
         [NonSerialized]
         private NetworkBehaviour[] _networkBehavioursCache;
@@ -221,32 +222,38 @@ namespace Mirage
         /// The INetworkPlayer associated with this <see cref="NetworkIdentity">NetworkIdentity</see>. This property is only valid on server
         /// <para>Use it to return details such as the connection&apos;s identity, IP address and ready status.</para>
         /// </summary>
-        public INetworkPlayer Owner
+        public INetworkPlayer Owner => _owner;
+
+        internal void SetOwner(INetworkPlayer player)
         {
-            get => _owner;
+            // do nothing if value is the same
+            if (_owner == player)
+                return;
 
-            internal set
+            // if owner is already set, then we can only set it to null
+            if (_owner != null && player != null)
+                throw new InvalidOperationException($"Object '{this}' (NetID {NetId}) already has an owner. Please call RemoveClientAuthority() first.");
+
+            if (_owner != null)
             {
-                // do nothing if value is the same
-                if (_owner == value)
-                    return;
-
-                if (_owner != null)
-                {
-                    // invoke OnAuthority for remove owner and then again if there is new owner
-                    // world can be null if owner is set before object is spawned
-                    World?.InvokeOnAuthorityChanged(this, false, _owner);
-                    _owner.RemoveOwnedObject(this);
-                }
-
-                _owner = value;
-                _owner?.AddOwnedObject(this);
-                _onOwnerChanged.Invoke(_owner);
-
-                // only invoke again if new owner is not null
-                if (_owner != null)
-                    World?.InvokeOnAuthorityChanged(this, true, _owner);
+                // invoke OnAuthority for remove owner and then again if there is new owner
+                // world can be null if owner is set before object is spawned
+                World?.InvokeOnAuthorityChanged(this, false, _owner);
+                _owner.RemoveOwnedObject(this);
             }
+
+            _owner = player;
+            _owner?.AddOwnedObject(this);
+
+            // if authority changes, we need to check if we are still allowed to sync to/from this instance
+            foreach (var comp in NetworkBehaviours)
+                comp.UpdateSyncObjectShouldSync();
+
+            _onOwnerChanged.Invoke(_owner);
+
+            // only invoke again if new owner is not null
+            if (_owner != null)
+                World?.InvokeOnAuthorityChanged(this, true, _owner);
         }
 
         /// <summary>
@@ -315,15 +322,33 @@ namespace Mirage
             return components;
         }
 
-        private NetworkVisibility _visibility;
-        public NetworkVisibility Visibility
+        private INetworkVisibility _visibility;
+        /// <summary>
+        /// Returns the NetworkVisibility behaviour on this gameObject, or a default visibility where all objects are visible.
+        /// <para>Note: NetworkVisibility must be on same gameObject has NetworkIdentity, not on a child object</para>
+        /// </summary>
+        public INetworkVisibility Visibility
         {
             get
             {
                 if (_visibility is null)
                 {
-                    _visibility = GetComponent<NetworkVisibility>();
+                    // try get behaviour, otherwise just set default class
+                    if (TryGetComponent<NetworkVisibility>(out var visibilityBehaviour))
+                        _visibility = visibilityBehaviour;
+                    else
+                    {
+                        if (ServerObjectManager == null)
+                            throw new InvalidOperationException("Can't get default Visibility before object is spawned");
+
+                        var defaultVisibility = ServerObjectManager.DefaultVisibility;
+                        if (defaultVisibility is null)
+                            throw new InvalidOperationException("DefaultVisibility was null on ObjectManager, make sure ServerObjectManager has referecne to server, and server has started");
+
+                        _visibility = defaultVisibility;
+                    }
                 }
+
                 return _visibility;
             }
         }
@@ -448,22 +473,6 @@ namespace Mirage
         public IAddLateEvent OnStopServer => _onStopServer;
 
         /// <summary>
-        /// used when adding players
-        /// </summary>
-        /// <param name="player"></param>
-        internal void SetClientOwner(INetworkPlayer player)
-        {
-            // do nothing if it already has an owner
-            if (Owner != null && player != Owner)
-            {
-                throw new InvalidOperationException($"Object '{this}' (NetID {NetId}) already has an owner. Please call RemoveClientAuthority() first.");
-            }
-
-            // otherwise set the owner connection
-            Owner = player;
-        }
-
-        /// <summary>
         /// this is used when a connection is destroyed, since the "observers" property is read-only
         /// </summary>
         /// <param name="player"></param>
@@ -526,6 +535,11 @@ namespace Mirage
         {
             if (logger.LogEnabled()) logger.Log($"OnStartServer invoked on '{this}' (NetId: {NetId}, SceneId: {SceneId:X})");
 
+            // update sync direction before invoking start callback
+            // need to do this because IsServer might now be set when it previosuly wasn't
+            foreach (var comp in NetworkBehaviours)
+                comp.UpdateSyncObjectShouldSync();
+
             _onStartServer.Invoke();
         }
 
@@ -538,8 +552,13 @@ namespace Mirage
         {
             if (_clientStarted)
                 return;
-            _clientStarted = true;
 
+            // update sync direction before invoking start callback
+            // need to do this because IsClient/Owner might now be set when it previosuly wasn't
+            foreach (var comp in NetworkBehaviours)
+                comp.UpdateSyncObjectShouldSync();
+
+            _clientStarted = true;
             _onStartClient.Invoke();
         }
 
@@ -554,6 +573,10 @@ namespace Mirage
 
         internal void NotifyAuthority()
         {
+            // if authority changes, we need to check if we are still allowed to sync to/from this instance
+            foreach (var comp in NetworkBehaviours)
+                comp.UpdateSyncObjectShouldSync();
+
             if (!_hadAuthority && HasAuthority)
                 CallStartAuthority();
             if (_hadAuthority && !HasAuthority)
@@ -580,25 +603,11 @@ namespace Mirage
         }
 
         /// <summary>
-        /// check if observer can be seen by connection.
-        /// <list type="bullet">
-        ///     <item><description>
-        ///         returns visibility.OnCheckObserver
-        ///     </description></item>
-        ///     <item><description>
-        ///         returns true if we have no NetworkVisibility, default objects are visible
-        ///     </description></item>
-        /// </list>
-        /// </summary>
-        /// <param name="player"></param>
+        /// Check if observer can be seen by player.
         /// <returns></returns>
         internal bool OnCheckObserver(INetworkPlayer player)
         {
-            if (Visibility != null)
-            {
-                return Visibility.OnCheckObserver(player);
-            }
-            return true;
+            return Visibility.OnCheckObserver(player);
         }
 
         internal void StopClient()
@@ -861,13 +870,12 @@ namespace Mirage
         {
             var varsMessage = new UpdateVarsMessage
             {
-                netId = NetId,
-                payload = writer.ToArraySegment(),
+                NetId = NetId,
+                Payload = writer.ToArraySegment(),
             };
 
-            SendToRemoteObservers(varsMessage, includeOwner: false);
+            this.SendToRemoteObservers(varsMessage, includeOwner: false);
         }
-
 
         internal void SetServerValues(NetworkServer networkServer, ServerObjectManager serverObjectManager)
         {
@@ -876,16 +884,22 @@ namespace Mirage
             World = networkServer.World;
             SyncVarSender = networkServer.SyncVarSender;
             Client = networkServer.LocalClient;
+
+            foreach (var behaviour in NetworkBehaviours)
+                behaviour.InitializeSyncObjects();
         }
 
         internal void SetClientValues(ClientObjectManager clientObjectManager, SpawnMessage msg)
         {
-            if (msg.position.HasValue) transform.localPosition = msg.position.Value;
-            if (msg.rotation.HasValue) transform.localRotation = msg.rotation.Value;
-            if (msg.scale.HasValue) transform.localScale = msg.scale.Value;
+            var spawnValues = msg.SpawnValues;
+            if (spawnValues.Position.HasValue) transform.localPosition = spawnValues.Position.Value;
+            if (spawnValues.Rotation.HasValue) transform.localRotation = spawnValues.Rotation.Value;
+            if (spawnValues.Scale.HasValue) transform.localScale = spawnValues.Scale.Value;
+            if (!string.IsNullOrEmpty(spawnValues.Name)) gameObject.name = spawnValues.Name;
+            if (spawnValues.SelfActive.HasValue) gameObject.SetActive(spawnValues.SelfActive.Value);
 
-            NetId = msg.netId;
-            HasAuthority = msg.isOwner;
+            NetId = msg.NetId;
+            HasAuthority = msg.IsOwner;
             ClientObjectManager = clientObjectManager;
             Client = ClientObjectManager.Client;
 
@@ -894,6 +908,9 @@ namespace Mirage
                 World = Client.World;
                 SyncVarSender = Client.SyncVarSender;
             }
+
+            foreach (var behaviour in NetworkBehaviours)
+                behaviour.InitializeSyncObjects();
         }
 
         /// <summary>
@@ -926,54 +943,15 @@ namespace Mirage
         }
 
         /// <summary>
-        /// Helper function to call OnRebuildObservers in all components
-        /// <para>HashSet is passed in so we can cache it!</para>
-        /// <para>Returns true if we have a NetworkVisibility, false otherwise</para>
-        /// <para>Initialize is true on first rebuild, false on consecutive rebuilds</para>
+        /// Helper function to call OnRebuildObservers on <see cref="Visibility"/> using <see cref="NetworkServer.Players"/> 
         /// </summary>
-        /// <param name="observersSet"></param>
-        /// <param name="initialize"></param>
-        /// <returns></returns>
-        internal bool GetNewObservers(HashSet<INetworkPlayer> observersSet, bool initialize)
+        /// <param name="observersSet">set to clear and fill with new observers</param>
+        /// <param name="initialize">If Object is being first spawned or refreshed later on</param>
+        internal void GetNewObservers(HashSet<INetworkPlayer> observersSet, bool initialize)
         {
             observersSet.Clear();
 
-            if (Visibility != null)
-            {
-                Visibility.OnRebuildObservers(observersSet, initialize);
-                return true;
-            }
-
-            // we have no NetworkVisibility. return false to indicate that we
-            // should use the default implementation.
-            return false;
-        }
-
-        /// <summary>
-        /// Helper function to add all server connections as observers.
-        /// This is used if none of the components provides their own
-        /// OnRebuildObservers function.
-        /// </summary>
-        internal void AddAllReadyServerConnectionsToObservers()
-        {
-            // add all server connections
-            foreach (var player in Server.Players)
-            {
-                if (!player.SceneIsReady)
-                    continue;
-
-                // todo replace this with a better visibility system (where default checks auth/scene ready)
-                if (ServerObjectManager.OnlySpawnOnAuthenticated && !player.IsAuthenticated)
-                    continue;
-
-                AddObserver(player);
-            }
-
-            // add local host connection (if any)
-            if (Server.LocalPlayer != null && Server.LocalPlayer.SceneIsReady)
-            {
-                AddObserver(Server.LocalPlayer);
-            }
+            Visibility.OnRebuildObservers(observersSet, initialize);
         }
 
         private static readonly HashSet<INetworkPlayer> newObservers = new HashSet<INetworkPlayer>();
@@ -985,35 +963,18 @@ namespace Mirage
         /// <param name="initialize">True if this is the first time.</param>
         public void RebuildObservers(bool initialize)
         {
-            var changed = false;
-
             // call OnRebuildObservers function
-            var rebuildOverwritten = GetNewObservers(newObservers, initialize);
+            GetNewObservers(newObservers, initialize);
 
-            // if player connection: ensure player always see himself no matter what.
-            // -> fixes https://github.com/vis2k/Mirror/issues/692 where a
-            //    player might teleport out of the ProximityChecker's cast,
-            //    losing the own connection as observer.
+            // ensure player always sees objects they own
             if (Owner != null && Owner.SceneIsReady)
             {
                 newObservers.Add(Owner);
             }
 
-            // if no NetworkVisibility component, then add all server connections.
-            if (!rebuildOverwritten)
-            {
-                // only add all connections when rebuilding the first time.
-                // second time we just keep them without rebuilding anything.
-                if (initialize)
-                {
-                    AddAllReadyServerConnectionsToObservers();
-                }
-                return;
-            }
-
-            changed = AddNewObservers(initialize, changed);
-
-            changed = RemoveOldObservers(changed);
+            var added = AddNewObservers(initialize);
+            var removed = RemoveOldObservers();
+            var changed = added || removed;
 
             if (changed)
             {
@@ -1027,8 +988,9 @@ namespace Mirage
         }
 
         // remove all old .observers that aren't in newObservers anymore
-        private bool RemoveOldObservers(bool changed)
+        private bool RemoveOldObservers()
         {
+            var changed = false;
             foreach (var player in observers)
             {
                 if (!newObservers.Contains(player))
@@ -1046,8 +1008,9 @@ namespace Mirage
         }
 
         // add all newObservers that aren't in .observers yet
-        private bool AddNewObservers(bool initialize, bool changed)
+        private bool AddNewObservers(bool initialize)
         {
+            var changed = false;
             foreach (var player in newObservers)
             {
                 // only add ready connections.
@@ -1094,7 +1057,7 @@ namespace Mirage
                 throw new InvalidOperationException($"Cannot assign a new owner to '{gameObject}' as it already has an owner. Please call RemoveClientAuthority() first.");
             }
 
-            SetClientOwner(player);
+            SetOwner(player);
 
             // The client will match to the existing object
             // update all variables and assign authority
@@ -1125,7 +1088,7 @@ namespace Mirage
             {
                 var previousOwner = Owner;
 
-                Owner = null;
+                SetOwner(null);
 
                 // we DONT need to resynchronize the entire object
                 // so only send a message telling client that it no longer has authority
@@ -1152,7 +1115,7 @@ namespace Mirage
             Client = null;
             ServerObjectManager = null;
             ClientObjectManager = null;
-            Owner = null;
+            _owner = null;
             _networkBehavioursCache = null;
 
             ClearObservers();
@@ -1168,38 +1131,6 @@ namespace Mirage
             _onAuthorityChanged.Reset();
             _onStopClient.Reset();
             _onStopServer.Reset();
-        }
-
-        private static readonly List<INetworkPlayer> connectionsExcludeSelf = new List<INetworkPlayer>(100);
-
-        /// <summary>
-        /// Send a message to all the remote observers
-        /// </summary>
-        /// <typeparam name="T">The message type to dispatch.</typeparam>
-        /// <param name="msg">The message to deliver to clients.</param>
-        /// <param name="includeOwner">Should the owner should receive this message too?</param>
-        /// <param name="channelId">The transport channel that should be used to deliver the message. Default is the Reliable channel.</param>
-        internal void SendToRemoteObservers<T>(T msg, bool includeOwner = true, Channel channelId = Channel.Reliable)
-        {
-            if (logger.LogEnabled()) logger.Log($"Server.SendToObservers: Sending message Id: {typeof(T)}");
-
-            if (observers.Count == 0)
-                return;
-
-            connectionsExcludeSelf.Clear();
-            foreach (var player in observers)
-            {
-                if (player == Server.LocalPlayer)
-                    continue;
-
-                if (includeOwner || Owner != player)
-                {
-                    connectionsExcludeSelf.Add(player);
-                }
-            }
-
-            if (connectionsExcludeSelf.Count > 0)
-                NetworkServer.SendToMany(connectionsExcludeSelf, msg, channelId);
         }
 
         /// <summary>
@@ -1245,18 +1176,33 @@ namespace Mirage
             }
         }
 
-        [System.Serializable]
-        public struct TransformSpawnSettings
+        public override string ToString()
         {
-            public bool SendPosition;
-            public bool SendRotation;
-            public bool SendScale;
+            return $"Identity[{NetId}, {name}]";
+        }
 
-            public TransformSpawnSettings(bool sendPosition, bool sendRotation, bool sendScale)
+
+        // todo update comment
+        /// <summary>
+        /// Collection that holds information about all RPC in this networkbehaviour (including derived classes)
+        /// <para>Can be used to get RPC name from its index</para>
+        /// <para>NOTE: Weaver uses this collection to add rpcs, If adding your own rpc do at your own risk</para>
+        /// </summary>
+        [NonSerialized]
+        private RemoteCallCollection _remoteCallCollection;
+        internal RemoteCallCollection RemoteCallCollection
+        {
+            get
             {
-                SendPosition = sendPosition;
-                SendRotation = sendRotation;
-                SendScale = sendScale;
+                if (_remoteCallCollection == null)
+                {
+                    // we should be save to lazy init
+                    // we only need to register RPCs when we receive them
+                    // when sending the index is baked in by weaver
+                    _remoteCallCollection = new RemoteCallCollection();
+                    _remoteCallCollection.RegisterAll(NetworkBehaviours);
+                }
+                return _remoteCallCollection;
             }
         }
     }

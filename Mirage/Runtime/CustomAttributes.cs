@@ -18,9 +18,17 @@ namespace Mirage
         public bool initialOnly;
 
         /// <summary>
-        ///     If true this syncvar hook will also fire on the server side.
+        /// If true this syncvar hook will also fire on the server side.
         /// </summary>
+        // todo add test to make sure this runs on owner client
+        // public bool invokeHookOnSender;
+        // [System.Obsolete("Use invokeHookOnSender instead", false)]
         public bool invokeHookOnServer;
+
+        /// <summary>
+        /// If true this syncvar hook will also fire the owner when it is sending data
+        /// </summary>
+        public bool invokeHookOnOwner;
 
         /// <summary>
         /// What type of look Mirage should look for
@@ -36,6 +44,11 @@ namespace Mirage
         Automatic = 0,
 
         /// <summary>
+        /// Hook with signature <c>void hookName()</c>
+        /// </summary>
+        MethodWith0Arg,
+
+        /// <summary>
         /// Hook with signature <c>void hookName(T newValue)</c>
         /// </summary>
         MethodWith1Arg,
@@ -44,6 +57,11 @@ namespace Mirage
         /// Hook with signature <c>void hookName(T oldValue, T newValue)</c>
         /// </summary>
         MethodWith2Arg,
+
+        /// <summary>
+        /// Hook with signature <c>event Action hookName;</c>
+        /// </summary>
+        EventWith0Arg,
 
         /// <summary>
         /// Hook with signature <c>event Action{T} hookName;</c>
@@ -99,6 +117,14 @@ namespace Mirage
     }
 
     /// <summary>
+    /// Tell the weaver to generate  reader and writer for a class
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
+    public class NetworkMessageAttribute : Attribute
+    {
+    }
+
+    /// <summary>
     /// Prevents a method from running if server is not active.
     /// <para>Can only be used inside a NetworkBehaviour</para>
     /// </summary>
@@ -111,14 +137,6 @@ namespace Mirage
         /// useful for unity built in methods such as Await, Update, Start, etc.
         /// </summary>
         public bool error = true;
-    }
-
-    /// <summary>
-    /// Tell the weaver to generate  reader and writer for a class
-    /// </summary>
-    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
-    public class NetworkMessageAttribute : Attribute
-    {
     }
 
     /// <summary>
@@ -164,6 +182,47 @@ namespace Mirage
         /// useful for unity built in methods such as Await, Update, Start, etc.
         /// </summary>
         public bool error = true;
+    }
+
+    /// <summary>
+    /// Prevents this method from running unless the NetworkFlags match the current state
+    /// <para>Can only be used inside a NetworkBehaviour</para>
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Method)]
+    public class NetworkMethodAttribute : Attribute
+    {
+        /// <summary>
+        /// If true, if called incorrectly method will throw.<br/>
+        /// If false, no error is thrown, but the method won't execute.<br/>
+        /// <para>
+        /// useful for unity built in methods such as Await, Update, Start, etc.
+        /// </para>
+        /// </summary>
+        public bool error = true;
+
+        public NetworkMethodAttribute(NetworkFlags flags) { }
+    }
+
+    [Flags]
+    public enum NetworkFlags
+    {
+        // note: NotActive can't be 0 as it needs its own flag
+        //       This is so that people can check for (Server | NotActive)
+        /// <summary>
+        /// If both server and client are not active. Can be used to check for singleplayer or unspawned object
+        /// </summary>
+        NotActive = 1,
+        Server = 2,
+        Client = 4,
+        /// <summary>
+        /// If either Server or Client is active.
+        /// <para>
+        /// Note this will not check host mode. For host mode you need to use <see cref="ServerAttribute"/> and <see cref="ClientAttribute"/>
+        /// </para>
+        /// </summary>
+        Active = Server | Client,
+        HasAuthority = 8,
+        LocalOwner = 16,
     }
 
     /// <summary>

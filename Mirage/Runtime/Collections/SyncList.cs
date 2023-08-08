@@ -12,6 +12,8 @@ namespace Mirage.Collections
 
         public int Count => _objects.Count;
         public bool IsReadOnly { get; private set; }
+        void ISyncObject.SetShouldSyncFrom(bool shouldSync) => IsReadOnly = !shouldSync;
+        void ISyncObject.SetNetworkBehaviour(NetworkBehaviour networkBehaviour) { }
 
         /// <summary>
         /// Raised when an element is added to the list.
@@ -101,10 +103,7 @@ namespace Mirage.Collections
 
         private void AddOperation(Operation op, int itemIndex, T newItem)
         {
-            if (IsReadOnly)
-            {
-                throw new InvalidOperationException("Synclists can only be modified at the server");
-            }
+            SyncObjectUtils.ThrowIfReadOnly(IsReadOnly);
 
             var change = new Change
             {
@@ -169,9 +168,6 @@ namespace Mirage.Collections
 
         public void OnDeserializeAll(NetworkReader reader)
         {
-            // This list can now only be modified by synchronization
-            IsReadOnly = true;
-
             // if init,  write the full list content
             var count = (int)reader.ReadPackedUInt32();
 
@@ -196,8 +192,6 @@ namespace Mirage.Collections
 
         public void OnDeserializeDelta(NetworkReader reader)
         {
-            // This list can now only be modified by synchronization
-            IsReadOnly = true;
             var raiseOnChange = false;
 
             var changesCount = (int)reader.ReadPackedUInt32();
@@ -432,6 +426,38 @@ namespace Mirage.Collections
                     AddOperation(Operation.OP_SET, i, value);
                 }
             }
+        }
+
+        /// <summary>
+        /// Can be used to set item dirty manually.
+        /// <para>should be used with classes to avoid having to clear field first</para>
+        /// <para>Will invoke OnSet</para>
+        /// </summary>
+        /// <param name="item"></param>
+        /// <exception cref="ArgumentException">Throws when item is not found in this synclist</exception>"
+        public void SetItemDirty(T item)
+        {
+            var index = IndexOf(item);
+            if (index >= 0)
+            {
+                SetItemDirtyAt(index);
+            }
+            else
+            {
+                throw new ArgumentException("Item could not be found in list");
+            }
+        }
+
+        /// <summary>
+        /// Can be used to set item dirty manually.
+        /// <para>should be used with classes to avoid having to clear field first</para>
+        /// </summary>
+        /// <param name="item"></param>
+        public void SetItemDirtyAt(int index)
+        {
+            // need to also call OnSet, so that it matches what happens on client side. See other uses of Op_Set
+            OnSet?.Invoke(index, _objects[index], _objects[index]);
+            AddOperation(Operation.OP_SET, index, _objects[index]);
         }
 
         public Enumerator GetEnumerator() => new Enumerator(this);

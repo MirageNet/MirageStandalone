@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Mirage.Authentication;
 using Mirage.Logging;
 using Mirage.Serialization;
 using Mirage.SocketLayer;
@@ -33,6 +34,8 @@ namespace Mirage
         /// </remarks>
         private readonly IConnection _connection;
 
+        public bool IsHost { get; }
+
         /// <summary>
         /// Has this player been marked as disconnected
         /// <para>Messages sent to disconnected players will be ignored</para>
@@ -45,15 +48,26 @@ namespace Mirage
         private NetworkIdentity _identity;
 
         /// <summary>
-        /// Marks if this player has been accepted by a <see cref="NetworkAuthenticator"/>
+        /// Authentication information for this NetworkPlayer
         /// </summary>
-        public bool IsAuthenticated { get; set; }
+        public PlayerAuthentication Authentication { get; private set; }
+
+        public void SetAuthentication(PlayerAuthentication authentication, bool allowReplace)
+        {
+            if (Authentication == null || allowReplace)
+            {
+                Authentication = authentication;
+            }
+            else
+            {
+                throw new InvalidOperationException("Can't set Authentication because it is already set");
+            }
+        }
 
         /// <summary>
-        /// General purpose object to hold authentication data, character selection, tokens, etc.
-        /// associated with the connection for reference after Authentication completes.
+        /// Helper methods to check if Authentication is set
         /// </summary>
-        public object AuthenticationData { get; set; }
+        public bool IsAuthenticated => Authentication != null;
 
         /// <summary>
         /// Flag that tells us if the scene has fully loaded in for player.
@@ -92,6 +106,10 @@ namespace Mirage
         /// </remarks>
         public void Disconnect()
         {
+            // dont need to call disconnect twice, so just return
+            if (_isDisconnected)
+                return;
+
             _connection.Disconnect();
             _isDisconnected = true;
         }
@@ -139,11 +157,11 @@ namespace Mirage
         /// Creates a new NetworkConnection with the specified address and connectionId
         /// </summary>
         /// <param name="networkConnectionId"></param>
-        public NetworkPlayer(IConnection connection)
+        public NetworkPlayer(IConnection connection, bool isHost)
         {
             _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+            IsHost = isHost;
         }
-
 
         /// <summary>
         /// This sends a network message to the connection.
@@ -162,6 +180,7 @@ namespace Mirage
 
                 var segment = writer.ToArraySegment();
                 NetworkDiagnostics.OnSend(message, segment.Count, 1);
+                if (logger.LogEnabled()) logger.Log($"Sending {typeof(T)} to {this} channel:{channelId}");
                 Send(segment, channelId);
             }
         }
@@ -203,6 +222,7 @@ namespace Mirage
 
                 var segment = writer.ToArraySegment();
                 NetworkDiagnostics.OnSend(message, segment.Count, 1);
+                if (logger.LogEnabled()) logger.Log($"Sending {typeof(T)} to {this} channel:Notify");
                 _connection.SendNotify(segment, callBacks);
             }
         }
@@ -261,6 +281,12 @@ namespace Mirage
             if (logger.LogEnabled()) logger.Log($"Removing {identity} from Player[{Address}] OwnedObjects");
 
             _ownedObjects.Remove(identity);
+
+            // if is main character, then also remove that
+            if (Identity == identity)
+            {
+                Identity = null;
+            }
         }
 
         /// <summary>
@@ -280,20 +306,26 @@ namespace Mirage
                 if (netIdentity == Identity)
                     continue;
 
-                if (netIdentity != null && netIdentity.ServerObjectManager != null)
-                {
-                    // use SOM on object we are destroying, it should be set if object is spawned,
-                    // we can't use Identity.ServerObjectManager because if Identity is null we wont have a SOM
-                    netIdentity.ServerObjectManager.Destroy(netIdentity);
-                }
+                TryDestroy(netIdentity);
             }
 
-            if (Identity != null && Identity.ServerObjectManager != null)
-                // Destroy the connections own identity.
-                Identity.ServerObjectManager.Destroy(Identity.gameObject);
+            // Destroy the connections own identity.
+            TryDestroy(Identity);
 
             // clear the hashset because we destroyed them all
             _ownedObjects.Clear();
+        }
+
+        private static void TryDestroy(NetworkIdentity identity)
+        {
+            if (identity != null && identity.ServerObjectManager != null)
+            {
+                // use SOM on object we are destroying, it should be set if object is spawned,
+                //     previous this used the SOM from the player's character,
+                //     we can't use that because if Identity is null we wont have a SOM
+                // make sure to check sceneObject, we dont want to destory server's copy of a Scene object
+                identity.ServerObjectManager.Destroy(identity, destroyServerObject: !identity.IsSceneObject);
+            }
         }
     }
 }

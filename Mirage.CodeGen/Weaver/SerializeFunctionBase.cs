@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq.Expressions;
+using Mirage.CodeGen;
+using Mirage.Serialization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -25,12 +27,6 @@ namespace Mirage.Weaver
         /// Type used for logging, eg write or read
         /// </summary>
         protected abstract string FunctionTypeLog { get; }
-
-        /// <summary>
-        /// Name for const that will tell other asmdef's that type has already generated function
-        /// </summary>
-        [System.Obsolete("broken in unity2021", true)]
-        protected abstract Type GeneratedAttribute { get; }
 
         protected SerializeFunctionBase(ModuleDefinition module, IWeaverLogger logger)
         {
@@ -58,47 +54,6 @@ namespace Mirage.Weaver
 
             // mark type as generated,
             //MarkAsGenerated(dataType); <---  broken in unity2021
-        }
-
-        /// <summary>
-        /// Marks type as having write/read function if it is in the current module
-        /// </summary>
-        [System.Obsolete("broken in unity2021", true)]
-        private void MarkAsGenerated(TypeReference typeReference)
-        {
-            MarkAsGenerated(typeReference.Resolve());
-        }
-
-        /// <summary>
-        /// Marks type as having write/read function if it is in the current module
-        /// </summary>
-        [System.Obsolete("broken in unity2021", true)]
-        private void MarkAsGenerated(TypeDefinition typeDefinition)
-        {
-            // if in this module, then mark as generated
-            if (typeDefinition.Module != module)
-                return;
-
-            // dont add twice
-            if (typeDefinition.HasCustomAttribute(GeneratedAttribute))
-                return;
-
-            typeDefinition.AddCustomAttribute(module, GeneratedAttribute);
-        }
-
-        /// <summary>
-        /// Check if type has a write/read function generated in another module
-        /// <para>returns false if type is a member of current module</para>
-        /// </summary>
-        [System.Obsolete("broken in unity2021", true)]
-        private bool HasGeneratedFunctionInAnotherModule(TypeReference typeReference)
-        {
-            var def = typeReference.Resolve();
-            // if type is in this module, then we want to generate new function
-            if (def.Module == module)
-                return false;
-
-            return def.HasCustomAttribute(GeneratedAttribute);
         }
 
         /// <summary>
@@ -140,7 +95,7 @@ namespace Mirage.Weaver
         public MethodReference GetFunction_Throws(TypeReference typeReference)
         {
             // if is <T> then  just return generic write./read with T as the generic argument
-            if (typeReference.IsGenericParameter)
+            if (typeReference.IsGenericParameter || HasAsGenericAttribute(typeReference))
             {
                 return CreateGenericFunction(typeReference);
             }
@@ -164,7 +119,10 @@ namespace Mirage.Weaver
             }
         }
 
-
+        private bool HasAsGenericAttribute(TypeReference typeReference)
+        {
+            return typeReference.Resolve().HasCustomAttribute<WeaverWriteAsGenericAttribute>();
+        }
 
         private MethodReference GenerateFunction(TypeReference typeReference)
         {

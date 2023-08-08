@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 
@@ -13,16 +15,28 @@ namespace Mirage.Logging
         /// <summary>
         /// logHandler used for new loggers
         /// </summary>
-        private static ILogHandler defaultLogHandler = Debug.unityLogger;
+        private static Func<string, ILogHandler> createLoggerForType = _ => Debug.unityLogger;
 
         public static ILogger GetLogger<T>(LogType defaultLogLevel = LogType.Warning)
         {
-            return GetLogger(typeof(T).FullName, defaultLogLevel);
+            return GetLogger(typeof(T), defaultLogLevel);
         }
 
         public static ILogger GetLogger(System.Type type, LogType defaultLogLevel = LogType.Warning)
         {
-            return GetLogger(type.FullName, defaultLogLevel);
+            // Full name for generic type is messy, instead
+            if (type.IsGenericType && !type.IsGenericTypeDefinition)
+            {
+                var genericArgs = string.Join(",", type.GetGenericArguments().Select(x => x.Name));
+                // remove `1 from end of name
+                var name = type.Name.Substring(0, type.Name.IndexOf('`'));
+
+                return GetLogger($"{type.Namespace}.{name}<{genericArgs}>", defaultLogLevel);
+            }
+            else
+            {
+                return GetLogger(type.FullName, defaultLogLevel);
+            }
         }
 
         public static ILogger GetLogger(string loggerName, LogType defaultLogLevel = LogType.Warning)
@@ -37,7 +51,7 @@ namespace Mirage.Logging
 
         private static ILogger CreateNewLogger(string loggerName, LogType defaultLogLevel)
         {
-            var logger = new StandaloneLogger()
+            var logger = new Logger(createLoggerForType.Invoke(loggerName))
             {
                 // by default, log warnings and up
                 filterLogType = defaultLogLevel
@@ -48,20 +62,35 @@ namespace Mirage.Logging
         }
 
         /// <summary>
-        /// Replacing log handler for all existing loggers and sets defaultLogHandler for new loggers
+        /// Replacing log handlers for loggers, with the option to replace for exisitng or just new loggers
         /// </summary>
         /// <param name="logHandler"></param>
-        public static void ReplaceLogHandler(ILogHandler logHandler)
+        public static void ReplaceLogHandler(ILogHandler logHandler, bool replaceExisting = true)
         {
-            defaultLogHandler = logHandler;
+            ReplaceLogHandler(_ => logHandler, replaceExisting);
+        }
 
-            foreach (var logger in _loggers.Values)
+        /// <summary>
+        /// Replaceing log handlers for loggers, allows for unique log handlers for each type
+        /// <para>this can be used to add labels or other processing before logging the result</para>
+        /// </summary>
+        /// <param name="createHandler"></param>
+        /// <param name="replaceExisting"></param>
+        public static void ReplaceLogHandler(Func<string, ILogHandler> createHandler, bool replaceExisting = true)
+        {
+            createLoggerForType = createHandler;
+
+            if (replaceExisting)
             {
-                logger.logHandler = logHandler;
+                foreach (var kvp in _loggers)
+                {
+                    var logger = kvp.Value;
+                    var key = kvp.Key;
+                    logger.logHandler = createLoggerForType.Invoke(key);
+                }
             }
         }
     }
-
 
     public static class ILoggerExtensions
     {

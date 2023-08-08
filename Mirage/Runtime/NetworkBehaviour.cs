@@ -137,6 +137,11 @@ namespace Mirage
         }
 
         /// <summary>
+        /// flag to see if SetNetworkBehaviour has been called
+        /// </summary>
+        private bool _syncObjectsInitialized;
+
+        /// <summary>
         /// objects that can synchronize themselves, such as synclists
         /// </summary>
         protected readonly List<ISyncObject> syncObjects = new List<ISyncObject>();
@@ -237,6 +242,21 @@ namespace Mirage
             return identity;
         }
 
+        /// <summary>
+        /// calls SetNetworkBehaviour on each SyncObject, but only once
+        /// </summary>
+        internal void InitializeSyncObjects()
+        {
+            if (_syncObjectsInitialized)
+                return;
+
+            _syncObjectsInitialized = true;
+
+            // find all the ISyncObjects in this behaviour
+            foreach (var syncObject in syncObjects)
+                syncObject.SetNetworkBehaviour(this);
+        }
+
         // this gets called in the constructor by the weaver
         // for every SyncObject in the component (e.g. SyncLists).
         // We collect all of them and we synchronize them with OnSerialize/OnDeserialize
@@ -251,7 +271,25 @@ namespace Mirage
             if (SyncSettings.ShouldSyncFrom(Identity))
             {
                 _anySyncObjectDirty = true;
-                Server.SyncVarSender.AddDirtyObject(Identity);
+                Identity.SyncVarSender.AddDirtyObject(Identity);
+            }
+        }
+
+        /// <summary>
+        /// Call this after updating SyncSettings to update all SyncObjects
+        /// <para>
+        /// This only needs to be called manually if updating syncSettings at runtime.
+        /// Mirage will automatically call this after serializing or deserializing with initialState
+        /// </para>
+        /// </summary>
+        public void UpdateSyncObjectShouldSync()
+        {
+            var shouldSync = SyncSettings.ShouldSyncFrom(Identity);
+
+            if (logger.LogEnabled()) logger.Log($"Settings SyncObject sync on to {shouldSync} for {this}");
+            for (var i = 0; i < syncObjects.Count; i++)
+            {
+                syncObjects[i].SetShouldSyncFrom(shouldSync);
             }
         }
 
@@ -268,6 +306,8 @@ namespace Mirage
         /// <param name="bitMask">Bit mask to set.</param>
         public void SetDirtyBit(ulong bitMask)
         {
+            if (logger.LogEnabled()) logger.Log($"Dirty bit set {bitMask} on {Identity}");
+
             _syncVarDirtyBits |= bitMask;
 
             if (SyncSettings.ShouldSyncFrom(Identity))
@@ -283,17 +323,6 @@ namespace Mirage
         public void ClearDirtyBit(ulong bitMask)
         {
             _syncVarDirtyBits &= ~bitMask;
-        }
-
-
-        /// <summary>
-        /// This clears all the dirty bits that were set on this script by SetDirtyBits();
-        /// <para>This is automatically invoked when an update is sent for this object, but can be called manually as well.</para>
-        /// </summary>
-        [System.Obsolete("Use ClearShouldSync instead", true)] // renamed because ClearAllDirtyBits name is misleading because it also sets time
-        public void ClearAllDirtyBits(float now)
-        {
-            ClearShouldSync(now);
         }
 
         public void ClearDirtyBits()
@@ -349,16 +378,6 @@ namespace Mirage
         {
             return SyncVarDirtyBits != 0L || AnySyncObjectDirty;
         }
-
-        // old version of ShouldSync, name isn't great so use 
-        [System.Obsolete("Use ShouldSync instead", true)]
-        public bool IsDirty(float time) => ShouldSync(time);
-
-        // true if this component has data that has not been
-        // synchronized.  Note that it may not synchronize
-        // right away because of syncInterval
-        [System.Obsolete("Use AnyDirtyBits instead", true)] // duplicate method
-        public bool StillDirty() => AnyDirtyBits();
 
         /// <summary>
         /// Virtual function to override to send custom serialization data. The corresponding function to send serialization data is OnDeserialize().
@@ -449,7 +468,10 @@ namespace Mirage
 
             if (initialState)
             {
-                return SerializeObjectsAll(writer);
+                var written = SerializeObjectsAll(writer);
+                // after initial we need to set up objects for syncDirection
+                UpdateSyncObjectShouldSync();
+                return written;
             }
             else
             {
@@ -495,6 +517,7 @@ namespace Mirage
             if (initialState)
             {
                 DeSerializeObjectsAll(reader);
+                UpdateSyncObjectShouldSync();
             }
             else
             {
@@ -533,23 +556,10 @@ namespace Mirage
         }
 
         #region RPC
-        // todo move this to NetworkIdentity to optimize (add a registermethod on NB that NI will call)
-
-        // overriden by weaver
+        // overridden by weaver
         protected internal virtual int GetRpcCount() => 0;
-
-        /// <summary>
-        /// Collection that holds information about all RPC in this networkbehaviour (including derived classes)
-        /// <para>Can be used to get RPC name from its index</para>
-        /// <para>NOTE: Weaver uses this collection to add rpcs, If adding your own rpc do at your own risk</para>
-        /// </summary>
-        [NonSerialized]
-        public readonly RemoteCallCollection RemoteCallCollection;
-
-        protected NetworkBehaviour()
-        {
-            RemoteCallCollection = new RemoteCallCollection(this);
-        }
+        // overridden by weaver
+        protected internal virtual void RegisterRpc(RemoteCallCollection collection) { }
         #endregion
 
         public struct Id : IEquatable<Id>
