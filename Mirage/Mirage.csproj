@@ -69,9 +69,4 @@
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
   </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="UniTask" Version="2.3.3" />
-  </ItemGroup>
-  
 </Project>
