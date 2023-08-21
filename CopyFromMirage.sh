@@ -43,6 +43,7 @@ CopyScripts "$MiragePath/Assets/Mirage/Weaver/Mirage.CecilExtensions" "./Mirage.
 CopyScripts "$MiragePath/Assets/Mirage/Weaver/Mirage.CecilExtensions/Extensions" "./Mirage.CodeGen/Weaver/Mirage.CecilExtensions/Extensions"
 CopyScripts "$MiragePath/Assets/Mirage/Weaver/Mirage.CecilExtensions/Logging" "./Mirage.CodeGen/Weaver/Mirage.CecilExtensions/Logging"
 CopyScripts "$MiragePath/Assets/Mirage/Weaver/Mirage.CecilExtensions/UnityCodeGen" "./Mirage.CodeGen/Weaver/Mirage.CecilExtensions/UnityCodeGen"
+rm "./Mirage.CodeGen/Weaver/Mirage.CecilExtensions/UnityCodeGen/AssemblyInfo.cs"
 
 cp "$MiragePath/Assets/Mirage/Runtime/Logging/LogFactory.cs" "./Mirage.Logging/Logging/"
 sed -i 's/new Logger(createLoggerForType.Invoke(loggerName))/new StandaloneLogger()/g' ./Mirage.Logging/Logging/LogFactory.cs
