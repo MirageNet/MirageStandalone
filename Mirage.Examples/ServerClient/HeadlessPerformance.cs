@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Mirage.Standalone;
 
@@ -51,7 +52,7 @@ namespace Mirage.Examples
 
         private void ParseForServerMode()
         {
-            if (!HasArg("-server")) return;
+            if (!HasArg("-server") && !Debugger.IsAttached) return;
 
             server = runner.AddServer(port);
             server.MaxConnections = 9999;
@@ -68,7 +69,7 @@ namespace Mirage.Examples
 
         private async Task StartClients()
         {
-            if (!HasArg("-client")) return;
+            if (!HasArg("-client") && !Debugger.IsAttached) return;
 
             var address = GetArgValue("-address");
 
