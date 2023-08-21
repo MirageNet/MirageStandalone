@@ -175,7 +175,10 @@ namespace Mirage.CodeGen
 
                 try
                 {
-                    parent = parent.Resolve().BaseType;
+                    var resolved = parent.Resolve();
+                    if (resolved == null)
+                        return false;
+                    parent = resolved.BaseType;
                 }
                 catch
                 {
@@ -273,6 +276,9 @@ namespace Mirage.CodeGen
 
         public static bool HasCustomAttribute(this ICustomAttributeProvider attributeProvider, Type t)
         {
+            if (attributeProvider == null)
+                throw new ArgumentNullException(nameof(attributeProvider));
+
             return attributeProvider.CustomAttributes.Any(attr => attr.AttributeType.Is(t));
         }
 
