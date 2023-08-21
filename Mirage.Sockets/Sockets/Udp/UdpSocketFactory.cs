@@ -32,7 +32,11 @@ namespace Mirage.Sockets.Udp
         // Determines if we can use NanoSockets for socket-level IO. This will be true if either:
         // - We *want* to use native library explicitly.
         // - We have it set to Automatic selection and NanoSockets is supported.
+#if EXCLUDE_NANOSOCKETS
         private bool useNanoSocket => SocketLib == SocketLib.Native || (SocketLib == SocketLib.Automatic && NanoSocket.Supported);
+#else
+        private bool useNanoSocket => false;
+#endif
 
         /// <summary>
         /// did this instance call InitUDP.Init? if so then we need to call Deinit too
