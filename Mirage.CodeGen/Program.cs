@@ -2,8 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using Mono.Cecil;
-using Mono.Cecil.Cil;
+using Mirage.CodeGen;
 using Unity.CompilationPipeline.Common.Diagnostics;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
 
@@ -25,9 +24,9 @@ namespace Mirage.Weaver
                 var compiledAssembly = new CompiledAssembly(dllPath, references, new string[0]);
                 var weaverLogger = new WeaverLogger(false);
                 var weaver = new Weaver(weaverLogger);
-                var assemblyDefinition = weaver.Weave(compiledAssembly);
-                Write(assemblyDefinition, dllPath, compiledAssembly.PdbPath);
+                var result = weaver.Process(compiledAssembly);
 
+                Write(result, dllPath, compiledAssembly.PdbPath);
 
                 var exitCode = CheckDiagnostics(weaverLogger);
                 Environment.ExitCode = 0;
@@ -42,7 +41,7 @@ namespace Mirage.Weaver
 
         private static int CheckDiagnostics(WeaverLogger weaverLogger)
         {
-            var diagnostics = weaverLogger.Diagnostics;
+            var diagnostics = weaverLogger.GetDiagnostics();
             var exitCode = 0;
             foreach (var message in diagnostics)
             {
@@ -56,19 +55,12 @@ namespace Mirage.Weaver
             return exitCode;
         }
 
-        private static void Write(AssemblyDefinition assemblyDefinition, string dllPath, string pdbPath)
+        private static void Write(Result result, string dllPath, string pdbPath)
         {
-            var pe = new MemoryStream();
-            var pdb = new MemoryStream();
+            var inMemory = result.ILPostProcessResult.InMemoryAssembly;
 
-            var writerParameters = new WriterParameters
-            {
-                SymbolWriterProvider = new PortablePdbWriterProvider(),
-                SymbolStream = pdb,
-                WriteSymbols = true
-            };
-
-            assemblyDefinition?.Write(pe, writerParameters);
+            var pe = inMemory.PeData;
+            var pdb = inMemory.PdbData;
 
             File.WriteAllBytes(dllPath, pe.ToArray());
             File.WriteAllBytes(pdbPath, pdb.ToArray());

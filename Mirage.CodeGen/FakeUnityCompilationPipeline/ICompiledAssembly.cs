@@ -1,5 +1,27 @@
+using System.Collections.Generic;
+using Unity.CompilationPipeline.Common.Diagnostics;
+
 namespace Unity.CompilationPipeline.Common.ILPostProcessing
 {
+    public class ILPostProcessResult
+    {
+        public InMemoryAssembly InMemoryAssembly { get; set; }
+
+        public List<DiagnosticMessage> Diagnostics { get; set; }
+
+        public ILPostProcessResult(InMemoryAssembly inMemoryAssembly)
+        {
+            InMemoryAssembly = inMemoryAssembly;
+            Diagnostics = new List<DiagnosticMessage>();
+        }
+
+        public ILPostProcessResult(InMemoryAssembly inMemoryAssembly, List<DiagnosticMessage> diagnostics)
+        {
+            InMemoryAssembly = inMemoryAssembly;
+            Diagnostics = diagnostics;
+        }
+    }
+
     public interface ICompiledAssembly
     {
         InMemoryAssembly InMemoryAssembly { get; }
