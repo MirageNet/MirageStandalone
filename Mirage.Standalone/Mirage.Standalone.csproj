@@ -5,7 +5,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Mirage.Logging\Mirage.Logging.csproj" />
+      <ProjectReference Include="..\Mirage.Sockets\Mirage.Sockets.csproj" />
       <ProjectReference Include="..\Mirage\Mirage.csproj" />
+      <ProjectReference Include="..\UnityEngine\FakeUnityEngine.csproj" />
     </ItemGroup>
 
 </Project>
