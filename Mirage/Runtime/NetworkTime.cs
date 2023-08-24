@@ -152,13 +152,13 @@ namespace Mirage
                 // so cache the time for the duration of the frame
                 // if someone asks for .time several times in a frame this has significant impact
                 // this also makes it more consistent with Time.time
-                if (_lastFrame != UnityEngine.Time.frameCount)
-                {
+                //if (_lastFrame != UnityEngine.Time.frameCount)
+                //{
                     // Notice _offset is 0 at the server
-                    _time = LocalTime() - _offset.Value;
-                    _lastFrame = UnityEngine.Time.frameCount;
-                }
-                return _time;
+                //    _time = LocalTime() - _offset.Value;
+                //    _lastFrame = UnityEngine.Time.frameCount;
+                //}
+                return LocalTime() - _offset.Value;
 
             }
         }

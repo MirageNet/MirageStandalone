@@ -16,7 +16,5 @@ namespace UnityEngine
         }
 
         public static float time => GetNow() - start;
-
-        public static int frameCount => throw new NotSupportedException();
     }
 }
