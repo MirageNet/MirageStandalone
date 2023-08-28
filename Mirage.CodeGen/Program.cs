@@ -15,6 +15,18 @@ namespace Mirage.Weaver
             try
             {
                 Console.WriteLine("Mirage Weaver start");
+				
+				// This is to prevent an array out of bounds exception
+				// if you're double clicking or running it without any arguments.
+				if(args.Length == 0) 
+				{
+					// Environment.ExitCode = 1;
+					Console.Error.WriteLine("ERROR: Mirage CodeGen cannot be run without any arguments!");
+					Console.WriteLine("Usage: Mirage.CodeGen.exe <path to application DLL>");
+					Console.WriteLine("Example: Mirage.CodeGen.exe D:\\Dev\\CoolApp\\MyMirageApp.dll");
+					Environment.Exit(1);
+				}
+				
                 var dllPath = args[0];
                 var data = File.ReadAllBytes(dllPath);
                 var asm = Assembly.Load(data);
