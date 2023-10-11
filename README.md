@@ -4,6 +4,9 @@ Mirage Standalone package is a .NET Core version of [Mirage](https://github.com/
 
 Mirage is a rolling-release high-level API for the Unity Game Engine that provides a powerful, yet easy to use networking API. It is designed to work with Unity 3D and is available on GitHub.
 
+## Install
+
+Either add source code to your project, or add the [nuget package](https://www.nuget.org/packages/MirageNet.Mirage/)
 
 ## Adding Weaver to project
 

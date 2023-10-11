@@ -3,7 +3,8 @@ on:
   push:
     branches:
       - main  # Trigger the workflow on push to main branch
-
+    paths-ignore:
+      - '**.md'  # Ignore changes in .md files
 jobs:
   build:
     runs-on: ubuntu-latest
