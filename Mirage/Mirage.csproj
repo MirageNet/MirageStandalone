@@ -10,8 +10,8 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <PackageProjectUrl></PackageProjectUrl>
     <RepositoryUrl>https://github.com/MirageNet/MirageStandalone</RepositoryUrl>
-    <AssemblyVersion>131.0.1</AssemblyVersion> <!-- Mirage version -->
-    <Version>131.0.1</Version> <!-- package version -->
+    <AssemblyVersion>146.2.1</AssemblyVersion> <!-- Mirage version -->
+    <Version>146.2.1</Version> <!-- package version -->
     <PackageId>MirageNet.$(AssemblyName)</PackageId>
     <Title>$(AssemblyName)</Title>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -20,7 +20,7 @@
 
 
   <PropertyGroup>
-    <MirageCodeGenExe>../Mirage.CodeGen/bin/Release/net6.0/publish</MirageCodeGenExe>
+    <MirageCodeGenExe>../Mirage.CodeGen/bin/Release/net6.0/win-x64/publish</MirageCodeGenExe>
   </PropertyGroup>
   <ItemGroup>
     <None Include="./mirage3.png" Pack="true" PackagePath="" />
