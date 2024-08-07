@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.Events;
 
 namespace Mirage.Events
@@ -66,12 +66,11 @@ namespace Mirage.Events
     /// </code>
     /// </example>
     [Serializable]
-    public class AddLateEvent : AddLateEventBase, IAddLateEvent
+    public sealed class AddLateEventUnity : AddLateEvent, IAddLateEventUnity
     {
-        private readonly List<Action> tmp = new List<Action>();
-        private readonly List<Action> _listeners = new List<Action>();
+        [SerializeField] private UnityEvent _event = new UnityEvent();
 
-        public void AddListener(Action handler)
+        public void AddListener(UnityAction handler)
         {
             // invoke handler if event has been invoked atleast once
             if (HasInvoked)
@@ -80,41 +79,42 @@ namespace Mirage.Events
             }
 
             // add handler to inner event so that it can be invoked again
-            _listeners.Add(handler);
-        }
-        public void RemoveListener(Action handler)
-        {
-            _listeners.Remove(handler);
+            _event.AddListener(handler);
         }
 
-        public virtual void Invoke()
+        public void RemoveListener(UnityAction handler)
         {
-            MarkInvoked();
+            _event.RemoveListener(handler);
+        }
 
-            // tmp incase RemoveListener is called inside loop
-            tmp.Clear();
-            tmp.AddRange(_listeners);
-            foreach (var handler in tmp)
-                handler.Invoke();
-            tmp.Clear();
+        public override void Invoke()
+        {
+            base.Invoke();
+            _event.Invoke();
+        }
+
+        /// <summary>
+        /// Remove all non-persisent (ie created from script) listeners from the event.
+        /// </summary>
+        public void RemoveAllListeners()
+        {
+            _event.RemoveAllListeners();
         }
     }
 
     /// <summary>
-    /// Version of <see cref="AddLateEvent"/> with 1 argument
+    /// Version of <see cref="AddLateEventUnity"/> with 1 argument
     /// <para>Create a non-generic class inheriting from this to use in inspector. Same rules as <see cref="UnityEvent"/></para>
     /// </summary>
     /// <typeparam name="T0">argument 0</typeparam>
     /// <typeparam name="TEvent">UnityEvent</typeparam>
     [Serializable]
-    public class AddLateEvent<T0> : AddLateEventBase, IAddLateEvent<T0>
+    public abstract class AddLateEventUnity<T0, TEvent> : AddLateEvent<T0>, IAddLateEventUnity<T0>
+        where TEvent : UnityEvent<T0>, new()
     {
-        private readonly List<Action<T0>> tmp = new List<Action<T0>>();
-        private readonly List<Action<T0>> _listeners = new List<Action<T0>>();
+        [SerializeField] private TEvent _event = new TEvent();
 
-        protected T0 _arg0;
-
-        public void AddListener(Action<T0> handler)
+        public void AddListener(UnityAction<T0> handler)
         {
             // invoke handler if event has been invoked atleast once
             if (HasInvoked)
@@ -123,44 +123,42 @@ namespace Mirage.Events
             }
 
             // add handler to inner event so that it can be invoked again
-            _listeners.Add(handler);
+            _event.AddListener(handler);
         }
 
-        public void RemoveListener(Action<T0> handler)
+        public void RemoveListener(UnityAction<T0> handler)
         {
-            _listeners.Remove(handler);
+            _event.RemoveListener(handler);
         }
 
-        public virtual void Invoke(T0 arg0)
+        public override void Invoke(T0 arg0)
         {
-            MarkInvoked();
+            base.Invoke(arg0);
+            _event.Invoke(arg0);
+        }
 
-            _arg0 = arg0;
-            // tmp incase RemoveListener is called inside loop
-            tmp.Clear();
-            tmp.AddRange(_listeners);
-            foreach (var handler in tmp)
-                handler.Invoke(arg0);
-            tmp.Clear();
+        /// <summary>
+        /// Remove all non-persisent (ie created from script) listeners from the event.
+        /// </summary>
+        public void RemoveAllListeners()
+        {
+            _event.RemoveAllListeners();
         }
     }
 
     /// <summary>
-    /// Version of <see cref="AddLateEvent"/> with 2 arguments
+    /// Version of <see cref="AddLateEventUnity"/> with 2 arguments
     /// <para>Create a non-generic class inheriting from this to use in inspector. Same rules as <see cref="UnityEvent"/></para>
     /// </summary>
     /// <typeparam name="T0"></typeparam>
     /// <typeparam name="T1"></typeparam>
     [Serializable]
-    public class AddLateEvent<T0, T1> : AddLateEventBase, IAddLateEvent<T0, T1>
+    public abstract class AddLateEventUnity<T0, T1, TEvent> : AddLateEvent<T0, T1>, IAddLateEventUnity<T0, T1>
+        where TEvent : UnityEvent<T0, T1>, new()
     {
-        private readonly List<Action<T0, T1>> tmp = new List<Action<T0, T1>>();
-        private readonly List<Action<T0, T1>> _listeners = new List<Action<T0, T1>>();
+        [SerializeField] private TEvent _event = new TEvent();
 
-        protected T0 _arg0;
-        protected T1 _arg1;
-
-        public void AddListener(Action<T0, T1> handler)
+        public void AddListener(UnityAction<T0, T1> handler)
         {
             // invoke handler if event has been invoked atleast once
             if (HasInvoked)
@@ -169,26 +167,26 @@ namespace Mirage.Events
             }
 
             // add handler to inner event so that it can be invoked again
-            _listeners.Add(handler);
+            _event.AddListener(handler);
         }
 
-        public void RemoveListener(Action<T0, T1> handler)
+        public void RemoveListener(UnityAction<T0, T1> handler)
         {
-            _listeners.Remove(handler);
+            _event.RemoveListener(handler);
         }
 
-        public virtual void Invoke(T0 arg0, T1 arg1)
+        public override void Invoke(T0 arg0, T1 arg1)
         {
-            MarkInvoked();
+            base.Invoke(arg0, arg1);
+            _event.Invoke(arg0, arg1);
+        }
 
-            _arg0 = arg0;
-            _arg1 = arg1;
-            // tmp incase RemoveListener is called inside loop
-            tmp.Clear();
-            tmp.AddRange(_listeners);
-            foreach (var handler in tmp)
-                handler.Invoke(arg0, arg1);
-            tmp.Clear();
+        /// <summary>
+        /// Remove all non-persisent (ie created from script) listeners from the event.
+        /// </summary>
+        public void RemoveAllListeners()
+        {
+            _event.RemoveAllListeners();
         }
     }
 }

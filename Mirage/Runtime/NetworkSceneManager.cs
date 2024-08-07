@@ -218,7 +218,7 @@ namespace Mirage
             ThrowIfNotClient();
 
             // server should load the scene instead of sending scene message
-            if (Client.IsLocalClient)
+            if (Client.IsHost)
                 throw new InvalidOperationException("Host client should not be sent scene message");
 
             if (string.IsNullOrEmpty(message.MainActivateScene))
@@ -268,7 +268,7 @@ namespace Mirage
         /// <param name="sceneOperation">Scene operation that was just  happen</param>
         internal void OnClientSceneLoadFinished(Scene scene, SceneOperation sceneOperation)
         {
-            if (_clientPendingAdditiveSceneLoadingList.Count > 0 && Client && !Client.IsLocalClient)
+            if (_clientPendingAdditiveSceneLoadingList.Count > 0 && Client && !Client.IsHost)
             {
                 if (string.IsNullOrEmpty(_clientPendingAdditiveSceneLoadingList[0]))
                     throw new ArgumentNullException("ClientPendingAdditiveSceneLoadingList[0]", "Some how a null scene path has been entered.");
@@ -380,7 +380,7 @@ namespace Mirage
 
             OnServerStartedSceneChange?.Invoke(scenePath, sceneOperation);
 
-            if (Server.LocalClientActive)
+            if (Server.IsHost)
             {
                 // notify host client that scene loading is about to start
                 OnClientStartedSceneChange?.Invoke(scenePath, sceneOperation);
@@ -475,7 +475,7 @@ namespace Mirage
         {
             ThrowIfNotServer();
 
-            return ServerSceneLoading(scenePath, Server.Players, true, SceneOperation.Normal, sceneLoadParameters);
+            return ServerSceneLoading(scenePath, Server.AllPlayers, true, SceneOperation.Normal, sceneLoadParameters);
         }
 
         /// <summary>
@@ -573,7 +573,7 @@ namespace Mirage
             // nornal client invokes start, then finish, even if scene is already loaded
             OnClientStartedSceneChange?.Invoke(ActiveScenePath, SceneOperation.Normal);
 
-            // server server and client copy of hoost player as ready
+            // server server and client copy of host player as ready
             Server.LocalClient.Player.SceneIsReady = true;
             Server.LocalPlayer.SceneIsReady = true;
 
@@ -609,7 +609,7 @@ namespace Mirage
 
             // todo this might cause issues if only some players are loading scene
             // send to all, excluding host
-            Server.SendToAll(new SceneReadyMessage(), excludeLocalPlayer: true);
+            Server.SendToAll(new SceneReadyMessage(), authenticatedOnly: false, excludeLocalPlayer: true);
 
             // clean up and invoke server functions before user events
             Server.World.RemoveDestroyedObjects();
@@ -659,7 +659,7 @@ namespace Mirage
         {
             ThrowIfNotServer();
 
-            foreach (var player in players ?? Server.Players)
+            foreach (var player in players ?? Server.AllPlayers)
             {
                 SetClientNotReady(player);
             }
@@ -739,7 +739,7 @@ namespace Mirage
                     _serverSceneData.Remove(scene);
                 }
 
-                _serverSceneData.Add(scene, new HashSet<INetworkPlayer>(players ?? Server.Players));
+                _serverSceneData.Add(scene, new HashSet<INetworkPlayer>(players ?? Server.AllPlayers));
             }
 
             // If client let's call this to finish client scene loading too
@@ -818,7 +818,7 @@ namespace Mirage
                     throw new InvalidOperationException($"SceneManager failed to load scene with path: {scenePath}");
 
                 //If non host client. Wait for server to finish scene change
-                if (Client && Client.Active && !Client.IsLocalClient)
+                if (Client && Client.Active && !Client.IsHost)
                 {
                     SceneLoadingAsyncOperationInfo.allowSceneActivation = false;
                 }
@@ -855,7 +855,7 @@ namespace Mirage
 
             if (Server && Server.Active)
             {
-                _serverSceneData.Add(scene, new HashSet<INetworkPlayer>(players ?? Server.Players));
+                _serverSceneData.Add(scene, new HashSet<INetworkPlayer>(players ?? Server.AllPlayers));
             }
 
             CompleteLoadingScene(scene, SceneOperation.LoadAdditive, players);

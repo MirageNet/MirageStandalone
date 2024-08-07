@@ -4,21 +4,31 @@ using UnityEngine;
 namespace Mirage.SocketLayer
 {
     /// <summary>
-    /// Objects that represends a connection to/from a server/client. Holds state that is needed to update, send, and receive data
+    /// Objects that represents a connection to/from a server/client. Holds state that is needed to update, send, and receive data
     /// </summary>
-    internal sealed class ReliableConnection : Connection, IRawConnection
+    internal sealed class ReliableConnection : Connection, IRawConnection, IDisposable
     {
         private readonly AckSystem _ackSystem;
+        private readonly Batch _unreliableBatch;
         private readonly Pool<ByteBuffer> _bufferPool;
 
         internal ReliableConnection(Peer peer, IEndPoint endPoint, IDataHandler dataHandler, Config config, int maxPacketSize, Time time, Pool<ByteBuffer> bufferPool, ILogger logger, Metrics metrics)
             : base(peer, endPoint, dataHandler, config, maxPacketSize, time, logger, metrics)
         {
-
             _bufferPool = bufferPool;
-            _ackSystem = new AckSystem(this, config, maxPacketSize, time, bufferPool, metrics);
+            _unreliableBatch = new ArrayBatch(_maxPacketSize, SendBatchInternal, PacketType.Unreliable);
+            _ackSystem = new AckSystem(this, config, maxPacketSize, time, bufferPool, logger, metrics);
         }
 
+        private void SendBatchInternal(byte[] batch, int length)
+        {
+            _peer.Send(this, batch, length);
+        }
+
+        public void Dispose()
+        {
+            _ackSystem.Dispose();
+        }
 
         void IRawConnection.SendRaw(byte[] packet, int length)
         {
@@ -63,29 +73,16 @@ namespace Mirage.SocketLayer
 
             if (length + 1 > _maxPacketSize)
             {
-                throw new ArgumentException($"Message is bigger than MTU, size:{length} but max Unreliable message size is {_maxPacketSize - 1}");
+                throw new MessageSizeException($"Message is bigger than MTU, size:{length} but max Unreliable message size is {_maxPacketSize - 1}");
             }
 
-            using (var buffer = _bufferPool.Take())
-            {
-                Buffer.BlockCopy(packet, offset, buffer.array, 1, length);
-                // set header
-                buffer.array[0] = (byte)PacketType.Unreliable;
-
-                _peer.Send(this, buffer.array, length + 1);
-            }
-
+            _unreliableBatch.AddMessage(packet, offset, length);
             _metrics?.OnSendMessageUnreliable(length);
         }
 
         internal override void ReceiveUnreliablePacket(Packet packet)
         {
-            var count = packet.Length - 1;
-            var segment = new ArraySegment<byte>(packet.Buffer.array, 1, count);
-            _dataHandler.ReceiveMessage(this, segment);
-
-
-            _metrics?.OnReceiveMessageUnreliable(count);
+            HandleReliableBatched(packet.Buffer.array, 1, packet.Length, PacketType.Unreliable);
         }
 
         internal override void ReceiveReliablePacket(Packet packet)
@@ -165,7 +162,7 @@ namespace Mirage.SocketLayer
             var array = received.Buffer.array;
             var packetLength = received.Length;
             var offset = 0;
-            HandleReliableBatched(array, offset, packetLength);
+            HandleReliableBatched(array, offset, packetLength, PacketType.Reliable);
 
             // release buffer after all its message have been handled
             received.Buffer.Release();
@@ -189,6 +186,7 @@ namespace Mirage.SocketLayer
         public override void FlushBatch()
         {
             _ackSystem.Update();
+            _unreliableBatch.Flush();
         }
 
         internal override bool IsValidSize(Packet packet)

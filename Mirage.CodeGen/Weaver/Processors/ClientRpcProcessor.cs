@@ -80,6 +80,7 @@ namespace Mirage.Weaver
             var target = clientRpcAttr.GetField(nameof(ClientRpcAttribute.target), RpcTarget.Observers);
             var channel = clientRpcAttr.GetField(nameof(ClientRpcAttribute.channel), 0);
             var excludeOwner = clientRpcAttr.GetField(nameof(ClientRpcAttribute.excludeOwner), false);
+            var excludeHost = clientRpcAttr.GetField(nameof(ClientRpcAttribute.excludeHost), false);
 
             var rpc = SubstituteMethod(md);
 
@@ -89,7 +90,8 @@ namespace Mirage.Weaver
             // {
             //    call the body
             // }
-            CallBody(worker, rpc, target);
+            if (!excludeHost)
+                CallBody(worker, rpc, target, excludeOwner);
 
             // NetworkWriter writer = NetworkWriterPool.GetWriter()
             var writer = md.AddLocal<PooledNetworkWriter>();
@@ -154,7 +156,7 @@ namespace Mirage.Weaver
 
 
 
-        private void InvokeLocally(ILProcessor worker, RpcTarget target, Action body)
+        private void InvokeLocally(ILProcessor worker, RpcTarget target, bool excludeOwner, Action body)
         {
             // if (IsLocalClient) {
             var endif = worker.Create(OpCodes.Nop);
@@ -170,8 +172,9 @@ namespace Mirage.Weaver
             else
                 worker.Append(worker.Create(OpCodes.Ldnull));
 
+            worker.Append(worker.Create(excludeOwner.OpCode_Ldc()));
             // call function
-            worker.Append(worker.Create(OpCodes.Call, () => ClientRpcSender.ShouldInvokeLocally(default, default, default)));
+            worker.Append(worker.Create(OpCodes.Call, () => ClientRpcSender.ShouldInvokeLocally(default, default, default, default)));
             worker.Append(worker.Create(OpCodes.Brfalse, endif));
 
             body();
@@ -181,9 +184,9 @@ namespace Mirage.Weaver
 
         }
 
-        private void CallBody(ILProcessor worker, MethodDefinition rpc, RpcTarget target)
+        private void CallBody(ILProcessor worker, MethodDefinition rpc, RpcTarget target, bool excludeOwner)
         {
-            InvokeLocally(worker, target, () =>
+            InvokeLocally(worker, target, excludeOwner, () =>
             {
                 InvokeBody(worker, rpc);
                 // if target is owner or player we can return after invoking locally

@@ -2,7 +2,7 @@
 // so only include it for standalone and editor
 // but not for mac because of code signing issue
 // #if !(UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX)
-// #define NANO_SOCKET_ALLOWED
+// #define EXCLUDE_NANOSOCKETS
 // #endif
 
 using System;
@@ -32,11 +32,7 @@ namespace Mirage.Sockets.Udp
         // Determines if we can use NanoSockets for socket-level IO. This will be true if either:
         // - We *want* to use native library explicitly.
         // - We have it set to Automatic selection and NanoSockets is supported.
-#if EXCLUDE_NANOSOCKETS
         private bool useNanoSocket => SocketLib == SocketLib.Native || (SocketLib == SocketLib.Automatic && NanoSocket.Supported);
-#else
-        private bool useNanoSocket => false;
-#endif
 
         /// <summary>
         /// did this instance call InitUDP.Init? if so then we need to call Deinit too

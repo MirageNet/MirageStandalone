@@ -25,7 +25,7 @@ namespace Mirage
         private static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkBehaviour));
 
         // protected because it is ok for child classes to set this if they want
-        protected internal float _nextSyncTime;
+        protected internal double _nextSyncTime;
 
         /// <summary>
         /// Sync settings for this NetworkBehaviour
@@ -47,7 +47,12 @@ namespace Mirage
         /// <summary>
         /// Returns true if we're on host mode.
         /// </summary>
-        public bool IsLocalClient => Identity.IsLocalClient;
+        [System.Obsolete("use IsHost instead")]
+        public bool IsLocalClient => Identity.IsHost;
+        /// <summary>
+        /// Returns true if we're on host mode.
+        /// </summary>
+        public bool IsHost => Identity.IsHost;
 
         /// <summary>
         /// This returns true if this object is the one that represents the player on the local machine.
@@ -268,7 +273,7 @@ namespace Mirage
 
         private void SyncObject_OnChange()
         {
-            if (SyncSettings.ShouldSyncFrom(Identity))
+            if (SyncSettings.ShouldSyncFrom(Identity, true))
             {
                 _anySyncObjectDirty = true;
                 Identity.SyncVarSender.AddDirtyObject(Identity);
@@ -284,7 +289,7 @@ namespace Mirage
         /// </summary>
         public void UpdateSyncObjectShouldSync()
         {
-            var shouldSync = SyncSettings.ShouldSyncFrom(Identity);
+            var shouldSync = SyncSettings.ShouldSyncFrom(Identity, true);
 
             if (logger.LogEnabled()) logger.Log($"Settings SyncObject sync on to {shouldSync} for {this}");
             for (var i = 0; i < syncObjects.Count; i++)
@@ -310,7 +315,7 @@ namespace Mirage
 
             _syncVarDirtyBits |= bitMask;
 
-            if (SyncSettings.ShouldSyncFrom(Identity))
+            if (SyncSettings.ShouldSyncFrom(Identity, false))
                 Identity.SyncVarSender.AddDirtyObject(Identity);
         }
 
@@ -341,7 +346,7 @@ namespace Mirage
         /// Clears dirty bits and sets the next sync time
         /// </summary>
         /// <param name="now"></param>
-        public void ClearShouldSync(float now)
+        public void ClearShouldSync(double now)
         {
             SyncSettings.UpdateTime(ref _nextSyncTime, now);
             ClearDirtyBits();
@@ -353,7 +358,7 @@ namespace Mirage
         /// <param name="time"></param>
         /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool ShouldSync(float time)
+        public bool ShouldSync(double time)
         {
             return AnyDirtyBits() && TimeToSync(time);
         }
@@ -364,7 +369,7 @@ namespace Mirage
         /// <param name="time"></param>
         /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TimeToSync(float time)
+        public bool TimeToSync(double time)
         {
             return time >= _nextSyncTime;
         }

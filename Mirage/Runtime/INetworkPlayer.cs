@@ -89,10 +89,28 @@ namespace Mirage
     public interface IObjectOwner
     {
         event Action<NetworkIdentity> OnIdentityChanged;
+        /// <summary>
+        /// The main object owned by this player, normally the player's character
+        /// </summary>
         NetworkIdentity Identity { get; set; }
         bool HasCharacter { get; }
-        void RemoveOwnedObject(NetworkIdentity networkIdentity);
+
+        /// <summary>
+        /// All the objects owned by the player
+        /// </summary>
+        IReadOnlyCollection<NetworkIdentity> OwnedObjects { get; }
         void AddOwnedObject(NetworkIdentity networkIdentity);
+        void RemoveOwnedObject(NetworkIdentity networkIdentity);
+        /// <summary>
+        /// Removes all owned objects. This is useful to call when player disconnects to avoid objects being destroyed
+        /// </summary>
+        /// <param name="sendAuthorityChangeEvent">Should message be send to owner client? If player is disconnecting you should set this false</param>
+        void RemoveAllOwnedObject(bool sendAuthorityChangeEvent);
+        /// <summary>
+        /// Destroys or unspawns all owned objects.
+        /// This is called when the player is disconnects.
+        /// It will be called after <see cref="NetworkServer.Disconnected"/>, so Disconnected can be used to remove any owned objects from the list before they are destroyed.
+        /// </summary>
         void DestroyOwnedObjects();
     }
 
@@ -102,14 +120,28 @@ namespace Mirage
     /// </summary>
     public interface INetworkPlayer : IMessageSender, IVisibilityTracker, IObjectOwner, ISceneLoader
     {
-        SocketLayer.IEndPoint Address { get; }
-        SocketLayer.IConnection Connection { get; }
+        IConnection Connection { get; }
+
+        /// <summary>
+        /// The IP address / URL / FQDN associated with the connection.
+        /// Can be useful for a game master to do IP Bans etc.
+        /// <para>
+        /// Best used to get concrete Endpoint type based on the <see cref="SocketFactory"/> being used
+        /// </para>
+        /// </summary>
+        IEndPoint Address { get; }
+
+        /// <summary>Connect called on client, but server has not replied yet</summary>
+        bool IsConnecting { get; }
+
+        /// <summary>Server and Client are connected and can send messages</summary>
+        bool IsConnected { get; }
+
         PlayerAuthentication Authentication { get; }
         void SetAuthentication(PlayerAuthentication authentication, bool allowReplace = false);
         bool IsAuthenticated { get; }
-        /// <summary>
-        /// True if this Player is the local player on the server or client
-        /// </summary>
+
+        /// <summary>True if this Player is the local player on the server or client</summary>
         bool IsHost { get; }
 
         void Disconnect();
@@ -118,9 +150,7 @@ namespace Mirage
 
     public interface ISceneLoader
     {
-        /// <summary>
-        ///     Scene is fully loaded and we now can do things with player.
-        /// </summary>
+        /// <summary>Scene is fully loaded and we now can do things with player.</summary>
         bool SceneIsReady { get; set; }
     }
 }

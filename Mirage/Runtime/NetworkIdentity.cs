@@ -123,7 +123,12 @@ namespace Mirage
         /// <summary>
         /// Returns true if we're on host mode.
         /// </summary>
-        public bool IsLocalClient => IsSpawned && Server != null && Server.LocalClientActive;
+        [System.Obsolete("use IsHost instead")]
+        public bool IsLocalClient => IsHost;
+        /// <summary>
+        /// Returns true if we're on host mode.
+        /// </summary>
+        public bool IsHost => IsSpawned && Server != null && Server.IsHost;
 
         /// <summary>
         /// This returns true if this object is the one that represents the player on the local machine.
@@ -367,7 +372,7 @@ namespace Mirage
 #endif
                 return _prefabHash;
             }
-            internal set
+            set
             {
                 if (value == 0)
                 {
@@ -405,13 +410,13 @@ namespace Mirage
 
 
         [Header("Events")]
-        [SerializeField] private AddLateEvent _onStartServer = new AddLateEvent();
-        [SerializeField] private AddLateEvent _onStartClient = new AddLateEvent();
-        [SerializeField] private AddLateEvent _onStartLocalPlayer = new AddLateEvent();
-        [SerializeField] private BoolAddLateEvent _onAuthorityChanged = new BoolAddLateEvent();
-        [SerializeField] private NetworkPlayerAddLateEvent _onOwnerChanged = new NetworkPlayerAddLateEvent();
-        [SerializeField] private AddLateEvent _onStopClient = new AddLateEvent();
-        [SerializeField] private AddLateEvent _onStopServer = new AddLateEvent();
+        [SerializeField] private readonly AddLateEvent _onStartServer = new AddLateEvent();
+        [SerializeField] private readonly AddLateEvent _onStartClient = new AddLateEvent();
+        [SerializeField] private readonly AddLateEvent _onStartLocalPlayer = new AddLateEvent();
+        [SerializeField] private readonly AddLateEvent<bool> _onAuthorityChanged = new AddLateEvent<bool>();
+        [SerializeField] private readonly AddLateEvent<INetworkPlayer> _onOwnerChanged = new AddLateEvent<INetworkPlayer>();
+        [SerializeField] private readonly AddLateEvent _onStopClient = new AddLateEvent();
+        [SerializeField] private readonly AddLateEvent _onStopServer = new AddLateEvent();
         private bool _clientStarted;
         private bool _localPlayerStarted;
         private bool _hadAuthority;
@@ -677,7 +682,7 @@ namespace Mirage
 
             var components = NetworkBehaviours;
             // store time as variable so we dont have to call property for each component
-            var now = Time.time;
+            var now = Time.timeAsDouble;
 
             // serialize all components
             for (var i = 0; i < components.Length; ++i)
@@ -690,8 +695,19 @@ namespace Mirage
                     continue;
 
                 // check if we should be writing this components
-                if (!comp.SyncSettings.ShouldSyncFrom(this))
-                    continue;
+
+                if (initialState)
+                {
+                    // for initial, check if we are sending to either owner/observers, even if From.Server is false
+                    var shouldSend = (comp.SyncSettings.To & SyncTo.OwnerAndObservers) != 0;
+                    if (!shouldSend)
+                        continue;
+                }
+                else
+                {
+                    if (!comp.SyncSettings.ShouldSyncFrom(this, false))
+                        continue;
+                }
 
                 if (logger.LogEnabled()) logger.Log($"OnSerializeAllSafely: '{name}', component '{comp.GetType()}', initial state: '{initialState}'");
 
@@ -934,7 +950,7 @@ namespace Mirage
                 return;
             }
 
-            if (logger.LogEnabled()) logger.Log($"Adding '{player.Connection.EndPoint}' as an observer for {gameObject}");
+            if (logger.LogEnabled()) logger.Log($"Adding '{player}' as an observer for {gameObject}");
             observers.Add(player);
             player.AddToVisList(this);
 
@@ -1139,7 +1155,7 @@ namespace Mirage
         internal void ClearShouldSync()
         {
             // store time as variable so we dont have to call property for each component
-            var now = Time.time;
+            var now = Time.timeAsDouble;
 
             foreach (var comp in NetworkBehaviours)
             {
@@ -1156,7 +1172,7 @@ namespace Mirage
         internal void ClearShouldSyncDirtyOnly()
         {
             // store time as variable so we dont have to call property for each component
-            var now = Time.time;
+            var now = Time.timeAsDouble;
 
             foreach (var comp in NetworkBehaviours)
             {

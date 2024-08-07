@@ -5,7 +5,9 @@ using Mono.Cecil.Cil;
 
 namespace Mirage.Weaver
 {
-    // todo add docs for what this type does
+    /// <summary>
+    /// Replaces SyncVar fields with their property getter/setting
+    /// </summary>
     public class PropertySiteProcessor
     {
         // setter functions that replace [SyncVar] member variable references. dict<field, replacement>
@@ -19,10 +21,64 @@ namespace Mirage.Weaver
             CodePass.ForEachInstruction(moduleDef, WeavedMethods, ProcessInstruction);
         }
 
-        private static bool WeavedMethods(MethodDefinition md) =>
-                        md.Name != ".cctor" &&
-                        md.Name != NetworkBehaviourProcessor.ProcessedFunctionName &&
-                        !md.IsConstructor;
+        private static bool WeavedMethods(MethodDefinition md)
+        {
+            if (md.Name == ".cctor")
+                return false;
+            if (md.Name == NetworkBehaviourProcessor.ProcessedFunctionName)
+                return false;
+
+            // dont use network get/set inside unity consturctors
+            // this is because they will try to set dirtyBit and throw unity errors
+            if (md.DeclaringType.IsDerivedFrom<UnityEngine.Object>() && md.IsConstructor)
+                return false;
+
+            // note: Constructor for non-unity types should be safe to use, for example get/set a sync var on a NB from without a struct
+
+            return true;
+        }
+
+        private Instruction ProcessInstruction(MethodDefinition md, Instruction instr, SequencePoint sequencePoint)
+        {
+            if (instr.OpCode == OpCodes.Stfld && instr.Operand is FieldReference opFieldst)
+            {
+                FieldReference resolved = opFieldst.Resolve();
+                if (resolved == null)
+                {
+                    resolved = opFieldst.DeclaringType.Resolve().GetField(opFieldst.Name);
+                }
+
+                // this instruction sets the value of a field. cache the field reference.
+                ProcessInstructionSetterField(instr, resolved);
+            }
+
+            if (instr.OpCode == OpCodes.Ldfld && instr.Operand is FieldReference opFieldld)
+            {
+                FieldReference resolved = opFieldld.Resolve();
+                if (resolved == null)
+                {
+                    resolved = opFieldld.DeclaringType.Resolve().GetField(opFieldld.Name);
+                }
+
+                // this instruction gets the value of a field. cache the field reference.
+                ProcessInstructionGetterField(instr, resolved);
+            }
+
+            if (instr.OpCode == OpCodes.Ldflda && instr.Operand is FieldReference opFieldlda)
+            {
+                FieldReference resolved = opFieldlda.Resolve();
+                if (resolved == null)
+                {
+                    resolved = opFieldlda.DeclaringType.Resolve().GetField(opFieldlda.Name);
+                }
+
+                // loading a field by reference,  watch out for initobj instruction
+                // see https://github.com/vis2k/Mirror/issues/696
+                return ProcessInstructionLoadAddress(md, instr, resolved);
+            }
+
+            return instr;
+        }
 
         // replaces syncvar write access with the NetworkXYZ.get property calls
         private void ProcessInstructionSetterField(Instruction i, FieldReference opField)
@@ -66,48 +122,6 @@ namespace Mirage.Weaver
                     i.Operand = replacement;
                 }
             }
-        }
-
-        private Instruction ProcessInstruction(MethodDefinition md, Instruction instr, SequencePoint sequencePoint)
-        {
-            if (instr.OpCode == OpCodes.Stfld && instr.Operand is FieldReference opFieldst)
-            {
-                FieldReference resolved = opFieldst.Resolve();
-                if (resolved == null)
-                {
-                    resolved = opFieldst.DeclaringType.Resolve().GetField(opFieldst.Name);
-                }
-
-                // this instruction sets the value of a field. cache the field reference.
-                ProcessInstructionSetterField(instr, resolved);
-            }
-
-            if (instr.OpCode == OpCodes.Ldfld && instr.Operand is FieldReference opFieldld)
-            {
-                FieldReference resolved = opFieldld.Resolve();
-                if (resolved == null)
-                {
-                    resolved = opFieldld.DeclaringType.Resolve().GetField(opFieldld.Name);
-                }
-
-                // this instruction gets the value of a field. cache the field reference.
-                ProcessInstructionGetterField(instr, resolved);
-            }
-
-            if (instr.OpCode == OpCodes.Ldflda && instr.Operand is FieldReference opFieldlda)
-            {
-                FieldReference resolved = opFieldlda.Resolve();
-                if (resolved == null)
-                {
-                    resolved = opFieldlda.DeclaringType.Resolve().GetField(opFieldlda.Name);
-                }
-
-                // loading a field by reference,  watch out for initobj instruction
-                // see https://github.com/vis2k/Mirror/issues/696
-                return ProcessInstructionLoadAddress(md, instr, resolved);
-            }
-
-            return instr;
         }
 
         private Instruction ProcessInstructionLoadAddress(MethodDefinition md, Instruction instr, FieldReference opField)

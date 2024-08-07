@@ -52,12 +52,13 @@ namespace Mirage
         public bool RunInBackground = true;
 
         private Peer _peer;
+        public PoolMetrics? PeerPoolMetrics => _peer?.PoolMetrics;
 
         [Tooltip("Authentication component attached to this object")]
         public AuthenticatorSettings Authenticator;
 
         [Header("Events")]
-        [SerializeField] private AddLateEvent _started = new AddLateEvent();
+        [SerializeField] private AddLateEventUnity _started = new AddLateEventUnity();
         [SerializeField] private NetworkPlayerAddLateEvent _connected = new NetworkPlayerAddLateEvent();
         [SerializeField] private NetworkPlayerAddLateEvent _authenticated = new NetworkPlayerAddLateEvent();
         [SerializeField] private DisconnectAddLateEvent _disconnected = new DisconnectAddLateEvent();
@@ -65,22 +66,22 @@ namespace Mirage
         /// <summary>
         /// Event fires when the client starts, before it has connected to the Server.
         /// </summary>
-        public IAddLateEvent Started => _started;
+        public IAddLateEventUnity Started => _started;
 
         /// <summary>
         /// Event fires once the Client has connected its Server.
         /// </summary>
-        public IAddLateEvent<INetworkPlayer> Connected => _connected;
+        public IAddLateEventUnity<INetworkPlayer> Connected => _connected;
 
         /// <summary>
         /// Event fires after the Client connection has successfully been authenticated with its Server.
         /// </summary>
-        public IAddLateEvent<INetworkPlayer> Authenticated => _authenticated;
+        public IAddLateEventUnity<INetworkPlayer> Authenticated => _authenticated;
 
         /// <summary>
         /// Event fires after the Client has disconnected from its Server and Cleanup has been called.
         /// </summary>
-        public IAddLateEvent<ClientStoppedReason> Disconnected => _disconnected;
+        public IAddLateEventUnity<ClientStoppedReason> Disconnected => _disconnected;
 
         /// <summary>
         /// The NetworkConnection object this client is using.
@@ -114,7 +115,12 @@ namespace Mirage
         /// <summary>
         /// Is this NetworkClient connected to a local server in host mode
         /// </summary>
-        public bool IsLocalClient { get; private set; }
+        [System.Obsolete("use IsHost instead")]
+        public bool IsLocalClient => IsHost;
+        /// <summary>
+        /// Is this NetworkClient connected to a local server in host mode
+        /// </summary>
+        public bool IsHost { get; private set; }
 
         /// <summary>
         /// Connect client to a NetworkServer instance.
@@ -184,8 +190,8 @@ namespace Mirage
 
         private void Peer_OnConnected(IConnection conn)
         {
-            if (!IsLocalClient)
-                World.Time.UpdateClient(this);
+            if (!IsHost)
+                World.Time.PingNow(this);
 
             _connectState = ConnectState.Connected;
             _connected.Invoke(Player);
@@ -229,7 +235,7 @@ namespace Mirage
             (var clientConn, var serverConn) = PipePeerConnection.Create(dataHandler, serverDataHandler, OnHostDisconnected, null);
 
             // set up client before connecting to server, server could invoke handlers
-            IsLocalClient = true;
+            IsHost = true;
             Player = new NetworkPlayer(clientConn, true);
             dataHandler.SetConnection(clientConn, Player);
 
@@ -350,7 +356,7 @@ namespace Mirage
         internal void Update()
         {
             // local connection?
-            if (!IsLocalClient && Active && _connectState == ConnectState.Connected)
+            if (!IsHost && Active && _connectState == ConnectState.Connected)
             {
                 // only update things while connected
                 World.Time.UpdateClient(this);
@@ -383,7 +389,7 @@ namespace Mirage
         {
             logger.Log("Shutting down client.");
 
-            IsLocalClient = false;
+            IsHost = false;
 
             _connectState = ConnectState.Disconnected;
 

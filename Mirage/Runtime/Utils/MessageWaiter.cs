@@ -33,6 +33,9 @@ namespace Mirage
 
         public async UniTask<(bool disconnected, T message)> WaitAsync()
         {
+#if NETCOREAPP
+            // Apparently UniTask's WaitUntil is not available under NET Core...
+            // Use the old implementation here instead.
             while (true)
             {
                 if (_received || !_client.IsConnected)
@@ -40,6 +43,9 @@ namespace Mirage
 
                 await UniTask.Yield();
             }
+#else
+            await UniTask.WaitUntil(() => _received || !_client.IsConnected);
+#endif
 
             // check _client.IsConnected again here, incase we disconnected after _receiving 
             return (!_client.IsConnected, _message);

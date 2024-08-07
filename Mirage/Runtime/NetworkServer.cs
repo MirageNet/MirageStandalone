@@ -59,16 +59,17 @@ namespace Mirage
         public ServerObjectManager ObjectManager;
 
         private Peer _peer;
+        public PoolMetrics? PeerPoolMetrics => _peer?.PoolMetrics;
 
         [Tooltip("Authentication component attached to this object")]
         public AuthenticatorSettings Authenticator;
 
         [Header("Events")]
-        [SerializeField] private AddLateEvent _started = new AddLateEvent();
+        [SerializeField] private AddLateEventUnity _started = new AddLateEventUnity();
         /// <summary>
         /// This is invoked when a server is started - including when a host is started.
         /// </summary>
-        public IAddLateEvent Started => _started;
+        public IAddLateEventUnity Started => _started;
 
         /// <summary>
         /// Event fires once a new Client has connect to the Server.
@@ -91,21 +92,21 @@ namespace Mirage
         [FoldoutEvent, SerializeField] private NetworkPlayerEvent _disconnected = new NetworkPlayerEvent();
         public NetworkPlayerEvent Disconnected => _disconnected;
 
-        [SerializeField] private AddLateEvent _stopped = new AddLateEvent();
-        public IAddLateEvent Stopped => _stopped;
+        [SerializeField] private AddLateEventUnity _stopped = new AddLateEventUnity();
+        public IAddLateEventUnity Stopped => _stopped;
 
         /// <summary>
         /// This is invoked when a host is started.
         /// <para>StartHost has multiple signatures, but they all cause this hook to be called.</para>
         /// </summary>
-        [SerializeField] private AddLateEvent _onStartHost = new AddLateEvent();
-        public IAddLateEvent OnStartHost => _onStartHost;
+        [SerializeField] private AddLateEventUnity _onStartHost = new AddLateEventUnity();
+        public IAddLateEventUnity OnStartHost => _onStartHost;
 
         /// <summary>
         /// This is called when a host is stopped.
         /// </summary>
-        [SerializeField] private AddLateEvent _onStopHost = new AddLateEvent();
-        public IAddLateEvent OnStopHost => _onStopHost;
+        [SerializeField] private AddLateEventUnity _onStopHost = new AddLateEventUnity();
+        public IAddLateEventUnity OnStopHost => _onStopHost;
 
         /// <summary>
         /// The connection to the host mode client (if any).
@@ -123,14 +124,27 @@ namespace Mirage
         /// <summary>
         /// True if there is a local client connected to this server (host mode)
         /// </summary>
-        public bool LocalClientActive => LocalClient != null && LocalClient.Active;
+        [System.Obsolete("use IsHost instead")]
+        public bool LocalClientActive => IsHost;
+        /// <summary>
+        /// True if there is a local client connected to this server (host mode)
+        /// </summary>
+        public bool IsHost => LocalClient != null && LocalClient.Active;
 
         /// <summary>
-        /// A list of local connections on the server.
+        /// All players on server (including unauthenticated players)
         /// </summary>
+        public IReadOnlyCollection<INetworkPlayer> AllPlayers => _connections.Values;
+        [Obsolete("Use AllPlayers or AuthenticatedPlayers instead")]
         public IReadOnlyCollection<INetworkPlayer> Players => _connections.Values;
 
+        /// <summary>
+        /// List of players that have Authenticated with server
+        /// </summary>
+        public IReadOnlyList<INetworkPlayer> AuthenticatedPlayers => _authenticatedPlayers;
+
         private readonly Dictionary<IConnection, INetworkPlayer> _connections = new Dictionary<IConnection, INetworkPlayer>();
+        private readonly List<INetworkPlayer> _authenticatedPlayers = new List<INetworkPlayer>();
 
         /// <summary>
         /// <para>Checks if the server has been started.</para>
@@ -144,6 +158,8 @@ namespace Mirage
 
         private SyncVarReceiver _syncVarReceiver;
         public MessageHandler MessageHandler { get; private set; }
+
+        private Action<INetworkPlayer, AuthenticationResult> _authFallCallback;
 
         /// <summary>
         /// Set to true if you want to manually call <see cref="UpdateReceive"/> and <see cref="UpdateSent"/> and stop mirage from automatically calling them
@@ -178,6 +194,7 @@ namespace Mirage
 
             // just clear list, connections will be disconnected when peer is closed
             _connections.Clear();
+            _authenticatedPlayers.Clear();
             LocalClient = null;
             LocalPlayer = null;
 
@@ -215,12 +232,13 @@ namespace Mirage
         public void StartServer(NetworkClient localClient = null)
         {
             ThrowIfActive();
-            ThrowIfSocketIsMissing();
+            if (Listening)
+                ThrowIfSocketIsMissing();
 
             Application.quitting += Stop;
             if (logger.LogEnabled()) logger.Log($"NetworkServer created, Mirage version: {Version.Current}");
 
-            logger.Assert(Players.Count == 0, "Player should have been reset since previous session");
+            logger.Assert(_authenticatedPlayers.Count == 0, "Player should have been reset since previous session");
             logger.Assert(_connections.Count == 0, "Connections should have been reset since previous session");
 
             World = new NetworkWorld();
@@ -246,14 +264,14 @@ namespace Mirage
                 };
             }
 
-            var maxPacketSize = SocketFactory.MaxPacketSize;
-            NetworkWriterPool.Configure(maxPacketSize);
-
             // Are we listening for incoming connections?
             // If yes, set up a socket for incoming connections (we're a multiplayer game).
             // If not, that's okay. Some games use a non-listening server for their single player game mode (Battlefield, Call of Duty...)
             if (Listening)
             {
+                var maxPacketSize = SocketFactory.MaxPacketSize;
+                NetworkWriterPool.Configure(maxPacketSize);
+
                 // Create a server specific socket.
                 var socket = SocketFactory.CreateServerSocket();
 
@@ -282,16 +300,26 @@ namespace Mirage
             // make sure to call ServerObjectManager start before started event
             // this is too stop any race conditions where other scripts add their started event before SOM is setup
             if (ObjectManager != null)
+            {
                 ObjectManager.ServerStarted(this);
+                // if no hostClient, then  spawn objects right away
+                if (LocalClient == null)
+                    ObjectManager.SpawnOrActivate();
+            }
             _started?.Invoke();
 
             if (LocalClient != null)
             {
-                // we should call onStartHost after transport is ready to be used
-                // this allows server methods like ServerObjectManager.Spawn to be called in there
+                localClient.ConnectHost(this, dataHandler);
+
+                // onStartHost needs to be called after the client is active
                 _onStartHost?.Invoke();
 
-                localClient.ConnectHost(this, dataHandler);
+                // spawn scene objects in starting scene AFTER host client has activated,
+                // otherwise IsClient will be false for objects in starting scene
+                if (ObjectManager != null)
+                    ObjectManager.SpawnOrActivate();
+
                 Connected?.Invoke(LocalPlayer);
 
                 if (logger.LogEnabled()) logger.Log("NetworkServer StartHost");
@@ -362,9 +390,25 @@ namespace Mirage
             }
             else
             {
-                // todo use reason
-                player.Disconnect();
+                if (_authFallCallback != null)
+                {
+                    if (logger.LogEnabled()) logger.Log($"Calling user auth failed callback");
+                    _authFallCallback.Invoke(player, result);
+                }
+                else
+                {
+                    if (logger.LogEnabled()) logger.Log($"Default auth failed, disconnecting player");
+                    player.Disconnect();
+                }
             }
+        }
+
+        public void SetAuthenticationFailedCallback(Action<INetworkPlayer, AuthenticationResult> callback)
+        {
+            if (_authFallCallback != null && callback != null && logger.WarnEnabled())
+                logger.LogWarning($"Replacing old callback. Only 1 auth failed callback can be used at once");
+
+            _authFallCallback = callback;
         }
 
         private void AuthenticationSuccess(INetworkPlayer player, AuthenticationResult result)
@@ -378,6 +422,7 @@ namespace Mirage
             player.Send(new AuthSuccessMessage { AuthenticatorName = result.Authenticator?.AuthenticatorName });
 
             // add connection
+            _authenticatedPlayers.Add(player);
             Authenticated?.Invoke(player);
         }
 
@@ -403,6 +448,7 @@ namespace Mirage
         private void RemoveConnection(INetworkPlayer player)
         {
             _connections.Remove(player.Connection);
+            _authenticatedPlayers.Remove(player);
         }
 
         /// <summary>
@@ -430,10 +476,20 @@ namespace Mirage
                 Authenticator.PreAddHostPlayer(player);
         }
 
-        public void SendToAll<T>(T msg, bool excludeLocalPlayer, Channel channelId = Channel.Reliable)
+        [Obsolete("Use SendToAll(msg, authenticatedOnly, excludeLocalPlayer, channelId) instead")]
+        public void SendToAll<T>(T msg, bool excludeLocalPlayer, Channel channelId = Channel.Reliable) => SendToAll(msg, authenticatedOnly: false, excludeLocalPlayer, channelId);
+        
+        public void SendToAll<T>(T msg, bool authenticatedOnly, bool excludeLocalPlayer, Channel channelId = Channel.Reliable)
         {
-            var enumerator = _connections.Values.GetEnumerator();
-            SendToMany(enumerator, msg, excludeLocalPlayer, channelId);
+            if (authenticatedOnly)
+            {
+                SendToMany(_authenticatedPlayers, msg, excludeLocalPlayer);
+            }
+            else
+            {
+                var enumerator = _connections.Values.GetEnumerator();
+                SendToMany(enumerator, msg, excludeLocalPlayer, channelId);
+            }
         }
 
         public void SendToMany<T>(IReadOnlyList<INetworkPlayer> players, T msg, bool excludeLocalPlayer, Channel channelId = Channel.Reliable)
@@ -547,6 +603,7 @@ namespace Mirage
 
             player.DestroyOwnedObjects();
             player.Identity = null;
+            player.RemoveAllVisibleObjects();
 
             if (player == LocalPlayer)
                 LocalPlayer = null;

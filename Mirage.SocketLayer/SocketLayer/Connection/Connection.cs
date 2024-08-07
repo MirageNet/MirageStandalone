@@ -113,7 +113,7 @@ namespace Mirage.SocketLayer
         {
             // sending to Connecting is also valid
             if (_state != ConnectionState.Connected && _state != ConnectionState.Connecting)
-                throw new InvalidOperationException("Connection is not connected");
+                throw new NoConnectionException($"Connection is not connected, ConnectionState: {_state}");
         }
 
 
@@ -205,7 +205,7 @@ namespace Mirage.SocketLayer
         internal abstract void ReceiveNotifyAck(Packet packet);
         internal abstract void ReceiveReliableFragment(Packet packet);
 
-        protected void HandleReliableBatched(byte[] array, int offset, int packetLength)
+        protected void HandleReliableBatched(byte[] array, int offset, int packetLength, PacketType packetType)
         {
             while (offset < packetLength)
             {
@@ -213,7 +213,7 @@ namespace Mirage.SocketLayer
                 var message = new ArraySegment<byte>(array, offset, length);
                 offset += length;
 
-                _metrics?.OnReceiveMessageReliable(length);
+                _metrics?.OnReceiveMessage(packetType, length);
                 _dataHandler.ReceiveMessage(this, message);
             }
         }

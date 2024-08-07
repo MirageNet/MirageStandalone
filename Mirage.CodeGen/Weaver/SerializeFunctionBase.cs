@@ -18,6 +18,7 @@ namespace Mirage.Weaver
         }
 
         protected readonly Dictionary<TypeReference, MethodReference> funcs = new Dictionary<TypeReference, MethodReference>(new TypeReferenceComparer());
+        protected readonly Dictionary<TypeDefinition, MethodReference> collectionMethods = new Dictionary<TypeDefinition, MethodReference>(new TypeReferenceComparer());
         private readonly IWeaverLogger logger;
         protected readonly ModuleDefinition module;
 
@@ -54,6 +55,21 @@ namespace Mirage.Weaver
 
             // mark type as generated,
             //MarkAsGenerated(dataType); <---  broken in unity2021
+        }
+
+        public void RegisterCollectionMethod(TypeDefinition dataType, MethodReference methodReference)
+        {
+            if (collectionMethods.ContainsKey(dataType))
+            {
+                logger.Warning(
+                    $"Registering a {FunctionTypeLog} for {dataType.FullName} when one already exists\n" +
+                    $"  old:{collectionMethods[dataType].FullName}\n" +
+                    $"  new:{methodReference.FullName}",
+                    methodReference.Resolve());
+            }
+
+            Log($"Register Collection Method {FunctionTypeLog} for {dataType.FullName}, method:{methodReference.FullName}");
+            collectionMethods[dataType] = methodReference;
         }
 
         /// <summary>
@@ -146,36 +162,33 @@ namespace Mirage.Weaver
                 {
                     throw new SerializeFunctionException($"{typeReference.Name} is an unsupported type. Multidimensional arrays are not supported", typeReference);
                 }
-                var elementType = typeReference.GetElementType();
-                return GenerateCollectionFunction(typeReference, elementType, ArrayExpression);
+
+                TypeReference elementType;
+                if (typeReference is ArrayType arrayType)
+                    // need to use ArrayType to support jagged arrays
+                    elementType = arrayType.ElementType;
+                else
+                    // fallback to GetElementType just incase
+                    elementType = typeReference.GetElementType();
+
+                var arrayMethod = module.ImportReference(ArrayExpression);
+                return GenerateCollectionFunction(typeReference, new List<TypeReference> { elementType }, arrayMethod);
             }
+
+            var typeDefinition = typeReference.Resolve();
 
             // check for collections
-            if (typeReference.Is(typeof(Nullable<>)))
+            if (collectionMethods.TryGetValue(typeDefinition, out var collectionMethod))
             {
                 var genericInstance = (GenericInstanceType)typeReference;
-                var elementType = genericInstance.GenericArguments[0];
+                var elementTypes = new List<TypeReference>();
+                foreach (var type in genericInstance.GenericArguments)
+                    elementTypes.Add(type);
 
-                return GenerateCollectionFunction(typeReference, elementType, NullableExpression);
+                return GenerateCollectionFunction(typeReference, elementTypes, collectionMethod);
             }
-            if (typeReference.Is(typeof(ArraySegment<>)))
-            {
-                var genericInstance = (GenericInstanceType)typeReference;
-                var elementType = genericInstance.GenericArguments[0];
-
-                return GenerateCollectionFunction(typeReference, elementType, SegmentExpression);
-            }
-            if (typeReference.Is(typeof(List<>)))
-            {
-                var genericInstance = (GenericInstanceType)typeReference;
-                var elementType = genericInstance.GenericArguments[0];
-
-                return GenerateCollectionFunction(typeReference, elementType, ListExpression);
-            }
-
 
             // check for invalid types
-            var typeDefinition = typeReference.Resolve();
             if (typeDefinition == null)
             {
                 throw ThrowCantGenerate(typeReference);
@@ -258,12 +271,9 @@ namespace Mirage.Weaver
         protected abstract MethodReference GetNetworkBehaviourFunction(TypeReference typeReference);
 
         protected abstract MethodReference GenerateEnumFunction(TypeReference typeReference);
-        protected abstract MethodReference GenerateCollectionFunction(TypeReference typeReference, TypeReference elementType, Expression<Action> genericExpression);
+        protected abstract MethodReference GenerateCollectionFunction(TypeReference typeReference, List<TypeReference> elementTypes, MethodReference collectionMethod);
 
         protected abstract Expression<Action> ArrayExpression { get; }
-        protected abstract Expression<Action> ListExpression { get; }
-        protected abstract Expression<Action> SegmentExpression { get; }
-        protected abstract Expression<Action> NullableExpression { get; }
 
         protected abstract MethodReference GenerateClassOrStructFunction(TypeReference typeReference);
     }

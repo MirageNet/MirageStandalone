@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq.Expressions;
 using Mirage.CodeGen;
 using Mirage.Serialization;
@@ -15,10 +16,7 @@ namespace Mirage.Weaver
         public Readers(ModuleDefinition module, IWeaverLogger logger) : base(module, logger) { }
 
         protected override string FunctionTypeLog => "read function";
-        protected override Expression<Action> ArrayExpression => () => CollectionExtensions.ReadArray<byte>(default);
-        protected override Expression<Action> ListExpression => () => CollectionExtensions.ReadList<byte>(default);
-        protected override Expression<Action> SegmentExpression => () => CollectionExtensions.ReadArraySegment<byte>(default);
-        protected override Expression<Action> NullableExpression => () => SystemTypesExtensions.ReadNullable<byte>(default);
+        protected override Expression<Action> ArrayExpression => () => Mirage.Serialization.CollectionExtensions.ReadArray<byte>(default);
 
         protected override MethodReference GetGenericFunction()
         {
@@ -87,17 +85,19 @@ namespace Mirage.Weaver
             return new ReadMethod(definition, readParameter, worker);
         }
 
-        protected override MethodReference GenerateCollectionFunction(TypeReference typeReference, TypeReference elementType, Expression<Action> genericExpression)
+        protected override MethodReference GenerateCollectionFunction(TypeReference typeReference, List<TypeReference> elementTypes, MethodReference collectionMethod)
         {
             // generate readers for the element
-            _ = GetFunction_Throws(elementType);
+            foreach (var elementType in elementTypes)
+                _ = GetFunction_Throws(elementType);
 
             var readMethod = GenerateReaderFunction(typeReference);
 
-            var listReader = module.ImportReference(genericExpression);
+            var collectionReader = collectionMethod.GetElementMethod();
 
-            var methodRef = new GenericInstanceMethod(listReader.GetElementMethod());
-            methodRef.GenericArguments.Add(elementType);
+            var methodRef = new GenericInstanceMethod(collectionReader);
+            foreach (var elementType in elementTypes)
+                methodRef.GenericArguments.Add(elementType);
 
             // generates
             // return reader.ReadList<T>()

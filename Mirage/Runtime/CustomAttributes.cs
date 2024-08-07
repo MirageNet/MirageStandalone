@@ -114,6 +114,8 @@ namespace Mirage
         public Channel channel = Channel.Reliable;
         public RpcTarget target = RpcTarget.Observers;
         public bool excludeOwner;
+        /// <summary>stops method being called on host/server</summary>
+        public bool excludeHost;
     }
 
     /// <summary>
@@ -256,4 +258,10 @@ namespace Mirage
     /// </summary>
     [AttributeUsage(AttributeTargets.Field)]
     public sealed class NetworkedPrefabAttribute : PropertyAttribute { }
+
+    /// <summary>
+    /// Add to NetworkBehaviour to force SyncSettings to be drawn, even if there are no syncvars
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class ShowSyncSettingsAttribute : Attribute { }
 }

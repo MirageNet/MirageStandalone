@@ -303,34 +303,34 @@ namespace Mirage.CodeGen
         }
 
         /// <summary>
-        /// Imports a field and makes it a member of its orignal type.
-        /// <para>This is needed if orignal type is a generic instance, this will ensure that it stays a member of that instance, eg MyMessage{int}.Value</para>
+        /// Imports a field and makes it a member of its original type.
+        /// <para>This is needed if original type is a generic instance, this will ensure that it stays a member of that instance, eg MyMessage{int}.Value</para>
         /// </summary>
         /// <param name="module"></param>
         /// <param name="field"></param>
-        /// <param name="orignalType">Type that the field orignal belonged to, NOT the resolved type</param>
+        /// <param name="originalType">Type that the field original belonged to, NOT the resolved type</param>
         /// <returns></returns>
-        public static FieldReference ImportField(this ModuleDefinition module, FieldDefinition field, TypeReference orignalType)
+        public static FieldReference ImportField(this ModuleDefinition module, FieldDefinition field, TypeReference originalType)
         {
-            if (orignalType.Module != module)
-                orignalType = module.ImportReference(orignalType);
+            if (originalType.Module != module)
+                originalType = module.ImportReference(originalType);
 
             var fieldType = module.ImportReference(field.FieldType);
-            return new FieldReference(field.Name, fieldType, orignalType);
+            return new FieldReference(field.Name, fieldType, originalType);
         }
 
         /// <summary>
         /// 
         /// </summary>
         /// <param name="field"></param>
-        /// <param name="orignalType">make sure orignalType is already imported</param>
+        /// <param name="originalType">make sure originalType is already imported</param>
         /// <returns></returns>
-        public static TypeReference GetFieldTypeIncludingGeneric(this FieldDefinition field, TypeReference orignalType)
+        public static TypeReference GetFieldTypeIncludingGeneric(this FieldDefinition field, TypeReference originalType)
         {
-            // if generic, then check if it has a type from orignalType 
-            if (field.FieldType.IsGenericParameter && orignalType.IsGenericInstance)
+            // if generic, then check if it has a type from originalType 
+            if (field.FieldType.IsGenericParameter && originalType.IsGenericInstance)
             {
-                if (FindGenericArgumentWithMatchingName(field.FieldType, orignalType, out var found))
+                if (FindGenericArgumentWithMatchingName(field.FieldType, originalType, out var found))
                     return found;
             }
 
@@ -338,10 +338,10 @@ namespace Mirage.CodeGen
             return field.FieldType;
         }
 
-        private static bool FindGenericArgumentWithMatchingName(TypeReference genericParameter, TypeReference orignalType, out TypeReference found)
+        private static bool FindGenericArgumentWithMatchingName(TypeReference genericParameter, TypeReference originalType, out TypeReference found)
         {
             // resolve to get GenericParameters
-            var resolved = orignalType.Resolve();
+            var resolved = originalType.Resolve();
 
             var typeName = genericParameter.Name;
             for (var i = 0; i < resolved.GenericParameters.Count; i++)
@@ -349,7 +349,7 @@ namespace Mirage.CodeGen
                 var param = resolved.GenericParameters[i];
                 if (param.Name == typeName)
                 {
-                    var generic = (GenericInstanceType)orignalType;
+                    var generic = (GenericInstanceType)originalType;
                     found = generic.GenericArguments[i];
                     return true;
                 }
