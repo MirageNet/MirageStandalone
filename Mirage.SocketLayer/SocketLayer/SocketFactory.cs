@@ -29,8 +29,13 @@ namespace Mirage.SocketLayer
     /// - Show config data to the user using the inspector, and give that data in the form of an <see cref="EndPoint"/>
     /// <para>This is a MonoBehaviour so can be attached in the inspector</para>
     /// </remarks>
+    [HelpURL("https://miragenet.github.io/Mirage/docs/general/sockets#changing-a-socket")]
     public abstract class SocketFactory : MonoBehaviour
     {
+        /// <summary>Max size for packets sent to or received from Socket
+        /// <para>Called once when Sockets are created</para></summary>
+        public abstract int MaxPacketSize { get; }
+
         /// <summary>Creates a <see cref="ISocket"/> to be used by <see cref="Peer"/> on the server</summary>
         /// <exception cref="NotSupportedException">Throw when Server is not supported on current platform</exception>
         public abstract ISocket CreateServerSocket();

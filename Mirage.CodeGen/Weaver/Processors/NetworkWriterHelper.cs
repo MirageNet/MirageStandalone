@@ -1,4 +1,5 @@
-﻿using Mirage.Serialization;
+﻿using Mirage.CodeGen;
+using Mirage.Serialization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -8,7 +9,7 @@ namespace Mirage.Weaver
     {
         public static void CallRelease(ModuleDefinition module, ILProcessor worker, VariableDefinition writer)
         {
-            MethodReference releaseMethod = GetReleaseMethod(module, writer);
+            var releaseMethod = GetReleaseMethod(module, writer);
 
             worker.Append(worker.Create(OpCodes.Ldloc, writer));
             worker.Append(worker.Create(OpCodes.Call, releaseMethod));
@@ -19,7 +20,7 @@ namespace Mirage.Weaver
         }
         public static MethodReference GetReleaseMethod(ModuleDefinition module, TypeDefinition writer)
         {
-            MethodDefinition releaseMethod = writer.GetMethod(nameof(PooledNetworkWriter.Release));
+            var releaseMethod = writer.GetMethod(nameof(PooledNetworkWriter.Release));
             return module.ImportReference(releaseMethod);
         }
     }

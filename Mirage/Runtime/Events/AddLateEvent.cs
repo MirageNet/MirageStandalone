@@ -1,5 +1,5 @@
 using System;
-using UnityEngine;
+using System.Collections.Generic;
 using UnityEngine.Events;
 
 namespace Mirage.Events
@@ -66,34 +66,37 @@ namespace Mirage.Events
     /// </code>
     /// </example>
     [Serializable]
-    public sealed class AddLateEvent : AddLateEventBase, IAddLateEvent
+    public class AddLateEvent : AddLateEventBase, IAddLateEvent
     {
-        [SerializeField] UnityEvent _event = new UnityEvent();
+        private readonly List<Action> tmp = new List<Action>();
+        private readonly List<Action> _listeners = new List<Action>();
 
-        protected override UnityEventBase baseEvent => _event;
-
-        public void AddListener(UnityAction handler)
+        public void AddListener(Action handler)
         {
             // invoke handler if event has been invoked atleast once
-            if (hasInvoked)
+            if (HasInvoked)
             {
                 handler.Invoke();
             }
 
             // add handler to inner event so that it can be invoked again
-            _event.AddListener(handler);
+            _listeners.Add(handler);
         }
-
-        public void RemoveListener(UnityAction handler)
+        public void RemoveListener(Action handler)
         {
-            _event.RemoveListener(handler);
+            _listeners.Remove(handler);
         }
 
-        public void Invoke()
+        public virtual void Invoke()
         {
             MarkInvoked();
 
-            _event.Invoke();
+            // tmp incase RemoveListener is called inside loop
+            tmp.Clear();
+            tmp.AddRange(_listeners);
+            foreach (var handler in tmp)
+                handler.Invoke();
+            tmp.Clear();
         }
     }
 
@@ -104,37 +107,41 @@ namespace Mirage.Events
     /// <typeparam name="T0">argument 0</typeparam>
     /// <typeparam name="TEvent">UnityEvent</typeparam>
     [Serializable]
-    public abstract class AddLateEvent<T0, TEvent> : AddLateEventBase, IAddLateEvent<T0>
-        where TEvent : UnityEvent<T0>, new()
+    public class AddLateEvent<T0> : AddLateEventBase, IAddLateEvent<T0>
     {
-        [SerializeField] TEvent _event = new TEvent();
-        protected override UnityEventBase baseEvent => _event;
+        private readonly List<Action<T0>> tmp = new List<Action<T0>>();
+        private readonly List<Action<T0>> _listeners = new List<Action<T0>>();
 
-        T0 arg0;
+        protected T0 _arg0;
 
-        public void AddListener(UnityAction<T0> handler)
+        public void AddListener(Action<T0> handler)
         {
             // invoke handler if event has been invoked atleast once
-            if (hasInvoked)
+            if (HasInvoked)
             {
-                handler.Invoke(arg0);
+                handler.Invoke(_arg0);
             }
 
             // add handler to inner event so that it can be invoked again
-            _event.AddListener(handler);
+            _listeners.Add(handler);
         }
 
-        public void RemoveListener(UnityAction<T0> handler)
+        public void RemoveListener(Action<T0> handler)
         {
-            _event.RemoveListener(handler);
+            _listeners.Remove(handler);
         }
 
-        public void Invoke(T0 arg0)
+        public virtual void Invoke(T0 arg0)
         {
             MarkInvoked();
 
-            this.arg0 = arg0;
-            _event.Invoke(arg0);
+            _arg0 = arg0;
+            // tmp incase RemoveListener is called inside loop
+            tmp.Clear();
+            tmp.AddRange(_listeners);
+            foreach (var handler in tmp)
+                handler.Invoke(arg0);
+            tmp.Clear();
         }
     }
 
@@ -145,39 +152,43 @@ namespace Mirage.Events
     /// <typeparam name="T0"></typeparam>
     /// <typeparam name="T1"></typeparam>
     [Serializable]
-    public abstract class AddLateEvent<T0, T1, TEvent> : AddLateEventBase, IAddLateEvent<T0, T1>
-        where TEvent : UnityEvent<T0, T1>, new()
+    public class AddLateEvent<T0, T1> : AddLateEventBase, IAddLateEvent<T0, T1>
     {
-        [SerializeField] TEvent _event = new TEvent();
-        protected override UnityEventBase baseEvent => _event;
+        private readonly List<Action<T0, T1>> tmp = new List<Action<T0, T1>>();
+        private readonly List<Action<T0, T1>> _listeners = new List<Action<T0, T1>>();
 
-        T0 arg0;
-        T1 arg1;
+        protected T0 _arg0;
+        protected T1 _arg1;
 
-        public void AddListener(UnityAction<T0, T1> handler)
+        public void AddListener(Action<T0, T1> handler)
         {
             // invoke handler if event has been invoked atleast once
-            if (hasInvoked)
+            if (HasInvoked)
             {
-                handler.Invoke(arg0, arg1);
+                handler.Invoke(_arg0, _arg1);
             }
 
             // add handler to inner event so that it can be invoked again
-            _event.AddListener(handler);
+            _listeners.Add(handler);
         }
 
-        public void RemoveListener(UnityAction<T0, T1> handler)
+        public void RemoveListener(Action<T0, T1> handler)
         {
-            _event.RemoveListener(handler);
+            _listeners.Remove(handler);
         }
 
-        public void Invoke(T0 arg0, T1 arg1)
+        public virtual void Invoke(T0 arg0, T1 arg1)
         {
             MarkInvoked();
 
-            this.arg0 = arg0;
-            this.arg1 = arg1;
-            _event.Invoke(arg0, arg1);
+            _arg0 = arg0;
+            _arg1 = arg1;
+            // tmp incase RemoveListener is called inside loop
+            tmp.Clear();
+            tmp.AddRange(_listeners);
+            foreach (var handler in tmp)
+                handler.Invoke(arg0, arg1);
+            tmp.Clear();
         }
     }
 }

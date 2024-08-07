@@ -1,22 +1,16 @@
 using System;
+using Mirage.CodeGen;
 using Mirage.Serialization;
 using Mirage.Weaver.SyncVars;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
-using MethodAttributes = Mono.Cecil.MethodAttributes;
 
 namespace Mirage.Weaver.NetworkBehaviours
 {
-    internal class DeserializeHelper
+    internal class DeserializeHelper : BaseMethodHelper
     {
-        public const string MethodName = nameof(NetworkBehaviour.DeserializeSyncVars);
+        private FoundNetworkBehaviour _behaviour;
 
-        readonly ModuleDefinition module;
-        readonly FoundNetworkBehaviour behaviour;
-
-        ILProcessor worker;
-
-        public MethodDefinition Method { get; private set; }
         public ParameterDefinition ReaderParameter { get; private set; }
         public ParameterDefinition InitializeParameter { get; private set; }
         /// <summary>
@@ -24,63 +18,39 @@ namespace Mirage.Weaver.NetworkBehaviours
         /// </summary>
         public VariableDefinition DirtyBitsLocal { get; private set; }
 
-        public DeserializeHelper(ModuleDefinition module, FoundNetworkBehaviour behaviour)
+        public DeserializeHelper(ModuleDefinition module, FoundNetworkBehaviour behaviour) : base(module, behaviour.TypeDefinition)
         {
-            this.module = module;
-            this.behaviour = behaviour;
+            _behaviour = behaviour;
         }
 
-        /// <summary>
-        /// Adds Serialize method to current type
-        /// </summary>
-        /// <returns></returns>
-        public ILProcessor AddMethod()
-        {
-            Method = behaviour.TypeDefinition.AddMethod(MethodName,
-                    MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.HideBySig);
+        public override string MethodName => nameof(NetworkBehaviour.DeserializeSyncVars);
 
+        protected override void AddParameters()
+        {
             ReaderParameter = Method.AddParam<NetworkReader>("reader");
             InitializeParameter = Method.AddParam<bool>("initialState");
-
-            Method.Body.InitLocals = true;
-            worker = Method.Body.GetILProcessor();
-            return worker;
         }
 
-        public void AddLocals()
+        protected override void AddLocals()
         {
             DirtyBitsLocal = Method.AddLocal<ulong>();
         }
 
-        public void WriteBaseCall()
-        {
-            MethodReference baseDeserialize = behaviour.TypeDefinition.BaseType.GetMethodInBaseType(MethodName);
-            if (baseDeserialize != null)
-            {
-                // base
-                worker.Append(worker.Create(OpCodes.Ldarg_0));
-                // reader
-                worker.Append(worker.Create(OpCodes.Ldarg, ReaderParameter));
-                // initialState
-                worker.Append(worker.Create(OpCodes.Ldarg, InitializeParameter));
-                worker.Append(worker.Create(OpCodes.Call, module.ImportReference(baseDeserialize)));
-            }
-        }
 
         public void WriteIfInitial(Action body)
         {
             // Generates: if (initial)
-            Instruction initialStateLabel = worker.Create(OpCodes.Nop);
+            var initialStateLabel = Worker.Create(OpCodes.Nop);
 
-            worker.Append(worker.Create(OpCodes.Ldarg, InitializeParameter));
-            worker.Append(worker.Create(OpCodes.Brfalse, initialStateLabel));
+            Worker.Append(Worker.Create(OpCodes.Ldarg, InitializeParameter));
+            Worker.Append(Worker.Create(OpCodes.Brfalse, initialStateLabel));
 
             body.Invoke();
 
-            worker.Append(worker.Create(OpCodes.Ret));
+            Worker.Append(Worker.Create(OpCodes.Ret));
 
             // Generates: end if (initial)
-            worker.Append(initialStateLabel);
+            Worker.Append(initialStateLabel);
         }
 
         /// <summary>
@@ -89,34 +59,46 @@ namespace Mirage.Weaver.NetworkBehaviours
         /// </summary>
         public void ReadDirtyBitMask()
         {
-            MethodReference readBitsMethod = module.ImportReference(ReaderParameter.ParameterType.Resolve().GetMethod(nameof(NetworkReader.Read)));
+            var readBitsMethod = _module.ImportReference(ReaderParameter.ParameterType.Resolve().GetMethod(nameof(NetworkReader.Read)));
 
             // Generates: reader.Read(n)
             // n is syncvars in this
 
             // get dirty bits
-            worker.Append(worker.Create(OpCodes.Ldarg, ReaderParameter));
-            worker.Append(worker.Create(OpCodes.Ldc_I4, behaviour.SyncVars.Count));
-            worker.Append(worker.Create(OpCodes.Call, readBitsMethod));
-            worker.Append(worker.Create(OpCodes.Stloc, DirtyBitsLocal));
+            Worker.Append(Worker.Create(OpCodes.Ldarg, ReaderParameter));
+            Worker.Append(Worker.Create(OpCodes.Ldc_I4, _behaviour.SyncVars.Count));
+            Worker.Append(Worker.Create(OpCodes.Call, readBitsMethod));
+            Worker.Append(Worker.Create(OpCodes.Stloc, DirtyBitsLocal));
+
+            SetDeserializeMask();
+        }
+
+        private void SetDeserializeMask()
+        {
+            // Generates: SetDeserializeMask(mask, n)
+            // n is syncvars in base class
+            Worker.Append(Worker.Create(OpCodes.Ldarg_0));
+            Worker.Append(Worker.Create(OpCodes.Ldloc, DirtyBitsLocal));
+            Worker.Append(Worker.Create(OpCodes.Ldc_I4, _behaviour.syncVarCounter.GetInBase()));
+            Worker.Append(Worker.Create<NetworkBehaviour>(OpCodes.Call, nb => nb.SetDeserializeMask(default, default)));
         }
 
         internal void WriteIfSyncVarDirty(FoundSyncVar syncVar, Action body)
         {
-            Instruction endIf = worker.Create(OpCodes.Nop);
+            var endIf = Worker.Create(OpCodes.Nop);
 
             // we dont shift read bits, so we have to shift dirty bit here
-            long syncVarIndex = syncVar.DirtyBit >> behaviour.syncVarCounter.GetInBase();
+            var syncVarIndex = syncVar.DirtyBit >> _behaviour.syncVarCounter.GetInBase();
 
             // check if dirty bit is set
-            worker.Append(worker.Create(OpCodes.Ldloc, DirtyBitsLocal));
-            worker.Append(worker.Create(OpCodes.Ldc_I8, syncVarIndex));
-            worker.Append(worker.Create(OpCodes.And));
-            worker.Append(worker.Create(OpCodes.Brfalse, endIf));
+            Worker.Append(Worker.Create(OpCodes.Ldloc, DirtyBitsLocal));
+            Worker.Append(Worker.Create(OpCodes.Ldc_I8, syncVarIndex));
+            Worker.Append(Worker.Create(OpCodes.And));
+            Worker.Append(Worker.Create(OpCodes.Brfalse, endIf));
 
             body.Invoke();
 
-            worker.Append(endIf);
+            Worker.Append(endIf);
         }
     }
 }

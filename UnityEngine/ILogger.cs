@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 
 namespace UnityEngine
 {
@@ -20,23 +19,7 @@ namespace UnityEngine
         public static void LogError(string message) => unityLogger.LogError(message);
         public static void LogException(Exception e) => unityLogger.LogException(e);
     }
-    public static class Time
-    {
-        static float start;
-
-        static float GetNow() => Stopwatch.GetTimestamp() / (float)Stopwatch.Frequency;
-
-        static Time()
-        {
-            start = GetNow();
-        }
-
-        public static float time => GetNow() - start;
-
-        public static int frameCount => throw new NotSupportedException();
-    }
-
-    // eum to match unity
+    // enum to match unity
     public enum LogType
     {
         Error = 0,

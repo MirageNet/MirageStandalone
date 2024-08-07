@@ -5,24 +5,43 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Mirage.SocketLayer
 {
+    public readonly struct PoolMetrics
+    {
+        public readonly int InPool;
+        public readonly int Created;
+        public readonly int PoolSize;
+
+        public PoolMetrics(int inPool, int created, int poolSize)
+        {
+            InPool = inPool;
+            Created = created;
+            PoolSize = poolSize;
+        }
+
+        public override string ToString()
+        {
+            return $"Pool({InPool}/{PoolSize}, Created={Created})";
+        }
+    }
+
     /// <summary>
     /// Holds a collection of <see cref="ByteBuffer"/> so they can be re-used without allocations
     /// </summary>
     public class Pool<T> where T : class
     {
-        const int PoolEmpty = -1;
+        private const int POOL_EMPTY = -1;
 
-        int maxPoolSize;
-        readonly int bufferSize;
-        readonly ILogger logger;
-        public delegate T CreateNewItem(int bufferSize, Pool<T> pool);
-        readonly CreateNewItem createNew;
+        private readonly ILogger _logger;
+        private readonly CreateNewItem _createNew;
+        private readonly int _bufferSize;
+        private T[] _pool;
+        private int _maxPoolSize;
+        private int _next = -1;
+        private int _created = 0;
 
-        T[] pool;
-        int next = -1;
-        int created = 0;
+        public PoolMetrics Metrics => new PoolMetrics(_next + 1, _created, _maxPoolSize);
 
-        OverMaxLog overMaxLog = new OverMaxLog();
+        private OverMaxLog _overMaxLog = new OverMaxLog();
 
         /// <summary>
         /// sets max pool size and then creates writers up to new start size
@@ -33,22 +52,32 @@ namespace Mirage.SocketLayer
         {
             if (startPoolSize > maxPoolSize) throw new ArgumentException("Start Size must be less than max size", nameof(startPoolSize));
 
-            if (this.maxPoolSize != maxPoolSize)
+            if (_maxPoolSize != maxPoolSize)
             {
-                this.maxPoolSize = maxPoolSize;
-                Array.Resize(ref pool, maxPoolSize);
+                _maxPoolSize = maxPoolSize;
+                Array.Resize(ref _pool, maxPoolSize);
             }
 
-            for (int i = created; i < startPoolSize; i++)
+            for (var i = _created; i < startPoolSize; i++)
             {
                 Put(CreateNewBuffer());
             }
 
-            if (logger.Enabled(LogType.Log)) logger.Log(LogType.Log, $"Configuring buffer, start Size {startPoolSize}, max size {maxPoolSize}");
+            if (_logger.Enabled(LogType.Log)) _logger.Log(LogType.Log, $"Configuring buffer, start Size {startPoolSize}, max size {maxPoolSize}");
         }
 
         /// <summary>
-        /// 
+        /// Creates pool, that does not require Buffer size
+        /// </summary>
+        /// <param name="bufferSize">size of each buffer</param>
+        /// <param name="startPoolSize">how many buffers to create at start</param>
+        /// <param name="maxPoolSize">max number of buffers in pool</param>
+        /// <param name="logger"></param>
+        public Pool(CreateNewItemNoCount createNew, int startPoolSize, int maxPoolSize, ILogger logger = null)
+            : this((_, p) => createNew.Invoke(p), default, startPoolSize, maxPoolSize, logger) { }
+
+        /// <summary>
+        /// Creates pool where buffer size will be passed to items when created them
         /// </summary>
         /// <param name="bufferSize">size of each buffer</param>
         /// <param name="startPoolSize">how many buffers to create at start</param>
@@ -57,29 +86,30 @@ namespace Mirage.SocketLayer
         public Pool(CreateNewItem createNew, int bufferSize, int startPoolSize, int maxPoolSize, ILogger logger = null)
         {
             if (startPoolSize > maxPoolSize) throw new ArgumentException("Start size must be less than max size", nameof(startPoolSize));
-            this.createNew = createNew ?? throw new ArgumentNullException(nameof(createNew));
+            _createNew = createNew ?? throw new ArgumentNullException(nameof(createNew));
 
-            this.bufferSize = bufferSize;
-            this.maxPoolSize = maxPoolSize;
-            this.logger = logger;
+            _bufferSize = bufferSize;
+            _maxPoolSize = maxPoolSize;
+            _logger = logger;
 
-            pool = new T[maxPoolSize];
-            for (int i = 0; i < startPoolSize; i++)
+            _pool = new T[maxPoolSize];
+            for (var i = 0; i < startPoolSize; i++)
             {
                 Put(CreateNewBuffer());
             }
         }
 
+
         private T CreateNewBuffer()
         {
-            created++;
-            overMaxLog.CheckLimit(this);
-            return createNew.Invoke(bufferSize, this);
+            _created++;
+            _overMaxLog.CheckLimit(this);
+            return _createNew.Invoke(_bufferSize, this);
         }
 
         public T Take()
         {
-            if (next == PoolEmpty)
+            if (_next == POOL_EMPTY)
             {
                 return CreateNewBuffer();
             }
@@ -88,62 +118,65 @@ namespace Mirage.SocketLayer
                 // todo is it a security risk to not clear buffer?
 
                 // take then decrement
-                T item = pool[next];
-                pool[next] = null;
-                next--;
+                var item = _pool[_next];
+                _pool[_next] = null;
+                _next--;
                 return item;
             }
         }
 
         public void Put(T buffer)
         {
-            if (next < maxPoolSize - 1)
+            if (_next < _maxPoolSize - 1)
             {
                 // increment then put
-                pool[++next] = buffer;
+                _pool[++_next] = buffer;
             }
             else
             {
                 // buffer is left for GC, so decrement created
-                created--;
+                _created--;
             }
         }
 
-        struct OverMaxLog
+        public delegate T CreateNewItemNoCount(Pool<T> pool);
+        public delegate T CreateNewItem(int bufferSize, Pool<T> pool);
+
+        private struct OverMaxLog
         {
             // 10 seconds log interval
-            const float LogInterval = 10;
+            private const float LOG_INTERVAL = 10;
+
+            private float _nextLogTime;
+            private int _lastLogValue;
 
             private float GetTime()
             {
                 return Stopwatch.GetTimestamp() / (float)Stopwatch.Frequency;
             }
 
-            float nextLogTime;
-            int lastLogValue;
-
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void CheckLimit(Pool<T> pool)
             {
-                if (pool.created >= pool.maxPoolSize && pool.logger.Enabled(LogType.Warning))
+                if (pool._created >= pool._maxPoolSize && pool._logger.Enabled(LogType.Warning))
                 {
-                    float now = GetTime();
+                    var now = GetTime();
 
                     // if has been enough time since last log, then log again 
-                    if (now > nextLogTime)
+                    if (now > _nextLogTime)
                     {
-                        lastLogValue = pool.created;
-                        nextLogTime = now + LogInterval;
-                        pool.logger.Log(LogType.Warning, $"Pool Max Size reached, type:{typeof(T).Name} created:{pool.created + 1} max:{pool.maxPoolSize}");
+                        _lastLogValue = pool._created;
+                        _nextLogTime = now + LOG_INTERVAL;
+                        pool._logger.Log(LogType.Warning, $"Pool Max Size reached, type:{typeof(T).Name} created:{pool._created + 1} max:{pool._maxPoolSize}");
                         return;
                     }
 
                     // if pool has grown enough since last log (but has been less than LogInterval) then log again now
-                    if (pool.created > lastLogValue + pool.maxPoolSize)
+                    if (pool._created > _lastLogValue + pool._maxPoolSize)
                     {
-                        lastLogValue = pool.created;
-                        nextLogTime = now + LogInterval;
-                        pool.logger.Log(LogType.Warning, $"Pool Max Size reached, type:{typeof(T).Name} created:{pool.created + 1} max:{pool.maxPoolSize}");
+                        _lastLogValue = pool._created;
+                        _nextLogTime = now + LOG_INTERVAL;
+                        pool._logger.Log(LogType.Warning, $"Pool Max Size reached, type:{typeof(T).Name} created:{pool._created + 1} max:{pool._maxPoolSize}");
                     }
                 }
             }

@@ -22,7 +22,7 @@ namespace Mirage.Weaver.NetworkBehaviours
 
         public FoundSyncVar AddSyncVar(FieldDefinition fd)
         {
-            int dirtyIndex = syncVarCounter.GetInBase() + SyncVars.Count;
+            var dirtyIndex = syncVarCounter.GetInBase() + SyncVars.Count;
             var syncVar = new FoundSyncVar(Module, this, fd, dirtyIndex);
             SyncVars.Add(syncVar);
             return syncVar;
@@ -31,15 +31,6 @@ namespace Mirage.Weaver.NetworkBehaviours
         public void SetSyncVarCount()
         {
             syncVarCounter.Set(SyncVars.Count);
-        }
-
-        public bool HasManualSerializeOverride()
-        {
-            return TypeDefinition.GetMethod(SerializeHelper.MethodName) != null;
-        }
-        public bool HasManualDeserializeOverride()
-        {
-            return TypeDefinition.GetMethod(DeserializeHelper.MethodName) != null;
         }
     }
 }

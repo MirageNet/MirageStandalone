@@ -94,13 +94,14 @@ namespace Mirage.Serialization
 
         public static void WriteGuid(this NetworkWriter writer, Guid value)
         {
-            byte[] data = value.ToByteArray();
+            var data = value.ToByteArray();
             writer.WriteBytes(data, 0, data.Length);
         }
 
+        [WeaverSerializeCollection]
         public static void WriteNullable<T>(this NetworkWriter writer, T? nullable) where T : struct
         {
-            bool hasValue = nullable.HasValue;
+            var hasValue = nullable.HasValue;
             writer.WriteBoolean(hasValue);
             if (hasValue)
             {
@@ -143,9 +144,11 @@ namespace Mirage.Serialization
             return converter.decimalValue;
         }
         public static Guid ReadGuid(this NetworkReader reader) => new Guid(reader.ReadBytes(16));
+
+        [WeaverSerializeCollection]
         public static T? ReadNullable<T>(this NetworkReader reader) where T : struct
         {
-            bool hasValue = reader.ReadBoolean();
+            var hasValue = reader.ReadBoolean();
             if (hasValue)
             {
                 return reader.Read<T>();

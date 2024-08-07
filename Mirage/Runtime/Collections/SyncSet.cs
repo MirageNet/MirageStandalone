@@ -11,8 +11,10 @@ namespace Mirage.Collections
 
         public int Count => objects.Count;
         public bool IsReadOnly { get; private set; }
+        void ISyncObject.SetShouldSyncFrom(bool shouldSync) => IsReadOnly = !shouldSync;
+        void ISyncObject.SetNetworkBehaviour(NetworkBehaviour networkBehaviour) { }
 
-        internal int ChangeCount => changes.Count;
+        internal int ChangeCount => _changes.Count;
 
         /// <summary>
         /// Raised when an element is added to the list.
@@ -45,18 +47,19 @@ namespace Mirage.Collections
             OP_REMOVE
         }
 
-        struct Change
+        private struct Change
         {
-            internal Operation operation;
-            internal T item;
+            public Operation Operation;
+            public T Item;
         }
 
-        readonly List<Change> changes = new List<Change>();
+        private readonly List<Change> _changes = new List<Change>();
+
         // how many changes we need to ignore
         // this is needed because when we initialize the list,
         // we might later receive changes that have already been applied
         // so we need to skip them
-        int changesAhead;
+        private int _changesAhead;
 
         public SyncSet(ISet<T> objects)
         {
@@ -66,33 +69,30 @@ namespace Mirage.Collections
         public void Reset()
         {
             IsReadOnly = false;
-            changes.Clear();
-            changesAhead = 0;
+            _changes.Clear();
+            _changesAhead = 0;
             objects.Clear();
         }
 
-        public bool IsDirty => changes.Count > 0;
+        public bool IsDirty => _changes.Count > 0;
 
         // throw away all the changes
         // this should be called after a successfull sync
-        public void Flush() => changes.Clear();
+        public void Flush() => _changes.Clear();
 
-        void AddOperation(Operation op) => AddOperation(op, default);
+        private void AddOperation(Operation op) => AddOperation(op, default);
 
-        void AddOperation(Operation op, T item)
+        private void AddOperation(Operation op, T item)
         {
-            if (IsReadOnly)
-            {
-                throw new InvalidOperationException("SyncSets can only be modified at the server");
-            }
+            SyncObjectUtils.ThrowIfReadOnly(IsReadOnly);
 
             var change = new Change
             {
-                operation = op,
-                item = item
+                Operation = op,
+                Item = item
             };
 
-            changes.Add(change);
+            _changes.Add(change);
             OnChange?.Invoke();
         }
 
@@ -101,7 +101,7 @@ namespace Mirage.Collections
             // if init,  write the full list content
             writer.WritePackedUInt32((uint)objects.Count);
 
-            foreach (T obj in objects)
+            foreach (var obj in objects)
             {
                 writer.Write(obj);
             }
@@ -110,30 +110,30 @@ namespace Mirage.Collections
             // thus the client will need to skip all the pending changes
             // or they would be applied again.
             // So we write how many changes are pending
-            writer.WritePackedUInt32((uint)changes.Count);
+            writer.WritePackedUInt32((uint)_changes.Count);
         }
 
         public void OnSerializeDelta(NetworkWriter writer)
         {
             // write all the queued up changes
-            writer.WritePackedUInt32((uint)changes.Count);
+            writer.WritePackedUInt32((uint)_changes.Count);
 
-            for (int i = 0; i < changes.Count; i++)
+            for (var i = 0; i < _changes.Count; i++)
             {
-                Change change = changes[i];
-                writer.WriteByte((byte)change.operation);
+                var change = _changes[i];
+                writer.WriteByte((byte)change.Operation);
 
-                switch (change.operation)
+                switch (change.Operation)
                 {
                     case Operation.OP_ADD:
-                        writer.Write(change.item);
+                        writer.Write(change.Item);
                         break;
 
                     case Operation.OP_CLEAR:
                         break;
 
                     case Operation.OP_REMOVE:
-                        writer.Write(change.item);
+                        writer.Write(change.Item);
                         break;
                 }
             }
@@ -141,19 +141,16 @@ namespace Mirage.Collections
 
         public void OnDeserializeAll(NetworkReader reader)
         {
-            // This list can now only be modified by synchronization
-            IsReadOnly = true;
-
             // if init,  write the full list content
-            int count = (int)reader.ReadPackedUInt32();
+            var count = (int)reader.ReadPackedUInt32();
 
             objects.Clear();
-            changes.Clear();
+            _changes.Clear();
             OnClear?.Invoke();
 
-            for (int i = 0; i < count; i++)
+            for (var i = 0; i < count; i++)
             {
-                T obj = reader.Read<T>();
+                var obj = reader.Read<T>();
                 objects.Add(obj);
                 OnAdd?.Invoke(obj);
             }
@@ -161,25 +158,23 @@ namespace Mirage.Collections
             // We will need to skip all these changes
             // the next time the list is synchronized
             // because they have already been applied
-            changesAhead = (int)reader.ReadPackedUInt32();
+            _changesAhead = (int)reader.ReadPackedUInt32();
             OnChange?.Invoke();
         }
 
         public void OnDeserializeDelta(NetworkReader reader)
         {
-            // This list can now only be modified by synchronization
-            IsReadOnly = true;
-            bool raiseOnChange = false;
+            var raiseOnChange = false;
 
-            int changesCount = (int)reader.ReadPackedUInt32();
+            var changesCount = (int)reader.ReadPackedUInt32();
 
-            for (int i = 0; i < changesCount; i++)
+            for (var i = 0; i < changesCount; i++)
             {
                 var operation = (Operation)reader.ReadByte();
 
                 // apply the operation only if it is a new change
                 // that we have not applied yet
-                bool apply = changesAhead == 0;
+                var apply = _changesAhead == 0;
 
                 switch (operation)
                 {
@@ -203,7 +198,7 @@ namespace Mirage.Collections
                 // we just skipped this change
                 else
                 {
-                    changesAhead--;
+                    _changesAhead--;
                 }
             }
 
@@ -215,7 +210,7 @@ namespace Mirage.Collections
 
         private void DeserializeAdd(NetworkReader reader, bool apply)
         {
-            T item = reader.Read<T>();
+            var item = reader.Read<T>();
             if (apply)
             {
                 objects.Add(item);
@@ -234,7 +229,7 @@ namespace Mirage.Collections
 
         private void DeserializeRemove(NetworkReader reader, bool apply)
         {
-            T item = reader.Read<T>();
+            var item = reader.Read<T>();
             if (apply)
             {
                 objects.Remove(item);
@@ -290,7 +285,7 @@ namespace Mirage.Collections
             }
 
             // remove every element in other from this
-            foreach (T element in other)
+            foreach (var element in other)
             {
                 Remove(element);
             }
@@ -309,11 +304,11 @@ namespace Mirage.Collections
             }
         }
 
-        void IntersectWithSet(ISet<T> otherSet)
+        private void IntersectWithSet(ISet<T> otherSet)
         {
             var elements = new List<T>(objects);
 
-            foreach (T element in elements)
+            foreach (var element in elements)
             {
                 if (!otherSet.Contains(element))
                 {
@@ -342,7 +337,7 @@ namespace Mirage.Collections
             }
             else
             {
-                foreach (T element in other)
+                foreach (var element in other)
                 {
                     if (!Remove(element))
                     {
@@ -356,7 +351,7 @@ namespace Mirage.Collections
         {
             if (other != this)
             {
-                foreach (T element in other)
+                foreach (var element in other)
                 {
                     Add(element);
                 }

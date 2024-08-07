@@ -1,3 +1,4 @@
+using Mirage.CodeGen;
 using Mirage.Weaver.NetworkBehaviours;
 using Mirage.Weaver.Serialization;
 using Mono.Cecil;
@@ -38,6 +39,7 @@ namespace Mirage.Weaver.SyncVars
         public SyncVarHook Hook { get; private set; }
         public bool InitialOnly { get; private set; }
         public bool InvokeHookOnServer { get; private set; }
+        public bool InvokeHookOnOwner { get; private set; }
 
         /// <summary>
         /// Changing the type of the field to the wrapper type, if one exists
@@ -47,7 +49,7 @@ namespace Mirage.Weaver.SyncVars
             OriginalName = FieldDefinition.Name;
             OriginalType = FieldDefinition.FieldType;
 
-            if (CheckWrapType(OriginalType, out TypeReference wrapType))
+            if (CheckWrapType(OriginalType, out var wrapType))
             {
                 IsWrapped = true;
                 FieldDefinition.FieldType = wrapType;
@@ -56,7 +58,7 @@ namespace Mirage.Weaver.SyncVars
 
         private bool CheckWrapType(TypeReference originalType, out TypeReference wrapType)
         {
-            TypeReference typeReference = originalType;
+            var typeReference = originalType;
 
             if (typeReference.Is<NetworkIdentity>())
             {
@@ -87,30 +89,36 @@ namespace Mirage.Weaver.SyncVars
         /// <param name="module"></param>
         public void ProcessAttributes(Writers writers, Readers readers)
         {
-            SyncVarHook hook = HookMethodFinder.GetHookMethod(FieldDefinition, OriginalType);
+            var hook = HookMethodFinder.GetHookMethod(FieldDefinition, OriginalType);
             Hook = hook;
             HasHook = hook != null;
 
             InitialOnly = GetInitialOnly(FieldDefinition);
-
             InvokeHookOnServer = GetFireOnServer(FieldDefinition);
+            InvokeHookOnOwner = GetFireOnOwner(FieldDefinition);
 
             ValueSerializer = ValueSerializerFinder.GetSerializer(this, writers, readers);
 
-            if (!HasHook && InvokeHookOnServer)
-                throw new HookMethodException("'invokeHookOnServer' is set to true but no hook was implemented. Please implement hook or set 'invokeHookOnServer' back to false or remove for default false.", FieldDefinition);
+            if (!HasHook && (InvokeHookOnServer || InvokeHookOnOwner))
+                throw new HookMethodException("'invokeHookOnServer' or 'InvokeHookOnOwner' is set to true but no hook was implemented. Please implement hook or set 'invokeHookOnServer' back to false or remove for default false.", FieldDefinition);
         }
 
-        static bool GetInitialOnly(FieldDefinition fieldDefinition)
+        private static bool GetInitialOnly(FieldDefinition fieldDefinition)
         {
-            CustomAttribute attr = fieldDefinition.GetCustomAttribute<SyncVarAttribute>();
+            var attr = fieldDefinition.GetCustomAttribute<SyncVarAttribute>();
             return attr.GetField(nameof(SyncVarAttribute.initialOnly), false);
         }
 
-        static bool GetFireOnServer(FieldDefinition fieldDefinition)
+        private static bool GetFireOnServer(FieldDefinition fieldDefinition)
         {
-            CustomAttribute attr = fieldDefinition.GetCustomAttribute<SyncVarAttribute>();
+            var attr = fieldDefinition.GetCustomAttribute<SyncVarAttribute>();
             return attr.GetField(nameof(SyncVarAttribute.invokeHookOnServer), false);
+        }
+
+        private static bool GetFireOnOwner(FieldDefinition fieldDefinition)
+        {
+            var attr = fieldDefinition.GetCustomAttribute<SyncVarAttribute>();
+            return attr.GetField(nameof(SyncVarAttribute.invokeHookOnOwner), false);
         }
     }
 }

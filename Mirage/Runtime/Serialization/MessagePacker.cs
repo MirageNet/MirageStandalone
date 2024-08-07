@@ -3,6 +3,16 @@ using System.Collections.Generic;
 
 namespace Mirage.Serialization
 {
+    /// <summary>
+    /// Class that will cache the ID for type T
+    /// <para>avoids needing to calculate the stable hash of the full name each time a message is sent</para>
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    public static class MessageIdCache<T>
+    {
+        public static readonly int Id = MessagePacker.GetId(typeof(T));
+    }
+
     // message packing all in one place, instead of constructing headers in all
     // kinds of different places
     //
@@ -35,20 +45,30 @@ namespace Mirage.Serialization
         /// <typeparam name="T"></typeparam>
         public static void RegisterMessage<T>()
         {
-            int id = GetId<T>();
+            var id = GetId<T>();
 
-            if (messageTypes.TryGetValue(id, out Type type) && type != typeof(T))
+            if (messageTypes.TryGetValue(id, out var type) && type != typeof(T))
             {
                 throw new ArgumentException($"Message {typeof(T)} and {messageTypes[id]} have the same ID. Change the name of one of those messages");
             }
             messageTypes[id] = typeof(T);
         }
 
+        /// <summary>
+        /// Gets the Id from <see cref="MessageIdCache"/> for <typeparamref name="T"/>
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
         public static int GetId<T>()
         {
-            return GetId(typeof(T));
+            return MessageIdCache<T>.Id;
         }
 
+        /// <summary>
+        /// Used to calculate new hash for <paramref name="type"/>
+        /// </summary>
+        /// <param name="type"></param>
+        /// <returns></returns>
         public static int GetId(Type type)
         {
             // paul: 16 bits is enough to avoid collisions
@@ -66,10 +86,13 @@ namespace Mirage.Serialization
             // this works because value types cannot be derived
             // if it is a reference type (for example IMessageBase),
             // ask the message for the real type
-            Type mstType = default(T) == null && message != null ? message.GetType() : typeof(T);
+            var id = default(T) == null && message != null 
+                // for class we need to use GetType incase T is base class
+                ? GetId(message.GetType())
+                // for struct, we can use the cached Id
+                : GetId<T>();
 
-            int msgType = GetId(mstType);
-            writer.WriteUInt16((ushort)msgType);
+            writer.WriteUInt16((ushort)id);
 
             writer.Write(message);
         }
@@ -79,29 +102,48 @@ namespace Mirage.Serialization
         // => useful for local client message enqueue
         public static byte[] Pack<T>(T message)
         {
-            using (PooledNetworkWriter writer = NetworkWriterPool.GetWriter())
+            using (var writer = NetworkWriterPool.GetWriter())
             {
                 Pack(message, writer);
-                byte[] data = writer.ToArray();
+                var data = writer.ToArray();
 
                 return data;
             }
         }
 
-        // unpack a message we received
-        public static T Unpack<T>(byte[] data)
+        /// <summary>
+        /// unpack a message we received
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="data"></param>
+        /// <param name="objectLocator">Can be null, but must be set in order to read NetworkIdentity Values</param>
+        /// <returns></returns>
+        /// <exception cref="FormatException"></exception>
+        public static T Unpack<T>(byte[] data, IObjectLocator objectLocator)
         {
-            using (PooledNetworkReader networkReader = NetworkReaderPool.GetReader(data))
+            using (var networkReader = NetworkReaderPool.GetReader(data, objectLocator))
             {
-                int msgType = GetId<T>();
-
-                int id = networkReader.ReadUInt16();
-                if (id != msgType)
-                    throw new FormatException("Invalid message,  could not unpack " + typeof(T).FullName);
+                ValidateId<T>(networkReader);
 
                 return networkReader.Read<T>();
             }
         }
+
+        /// <summary>
+        /// Check that id of type is the same as message header
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="networkReader"></param>
+        /// <exception cref="FormatException"></exception>
+        private static void ValidateId<T>(PooledNetworkReader networkReader)
+        {
+            var typeId = GetId<T>();
+
+            int id = networkReader.ReadUInt16();
+            if (id != typeId)
+                throw new FormatException("Invalid message,  could not unpack " + typeof(T).FullName);
+        }
+
         // unpack message after receiving
         // -> pass NetworkReader so it's less strange if we create it in here
         //    and pass it upwards.

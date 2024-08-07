@@ -14,6 +14,7 @@ namespace MirageHostExample
             var perf = new HeadlessPerformance(args);
 
             Console.ReadLine();
+            perf.Stop();
         }
     }
 }

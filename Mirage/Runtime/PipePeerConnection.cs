@@ -10,55 +10,56 @@ namespace Mirage
     /// </summary>
     public class PipePeerConnection : IConnection
     {
-        static readonly ILogger logger = LogFactory.GetLogger<PipePeerConnection>();
+        private static readonly ILogger logger = LogFactory.GetLogger<PipePeerConnection>();
 
         /// <summary>
         /// handler of other connection
         /// </summary>
-        IDataHandler otherHandler;
+        private IDataHandler _otherHandler;
+
         /// <summary>
         /// other connection that is passed to handler
         /// </summary>
-        IConnection otherConnection;
+        private IConnection _otherConnection;
 
         /// <summary>
         /// Name used for debugging
         /// </summary>
-        string name;
-
-        Action OnDisconnect;
+        private string _name;
+        private Action _onDisconnect;
 
         private PipePeerConnection() { }
 
-        public static (IConnection clientConn, IConnection serverConn) Create(IDataHandler clientHandler, IDataHandler serverHandler, Action ClientOnDisconnect, Action ServerOnDisconnect)
+        public static (IConnection clientConn, IConnection serverConn) Create(IDataHandler clientHandler, IDataHandler serverHandler, Action clientOnDisconnect, Action serverOnDisconnect)
         {
             var client = new PipePeerConnection();
-            client.OnDisconnect = ClientOnDisconnect;
             var server = new PipePeerConnection();
-            server.OnDisconnect = ServerOnDisconnect;
 
-            client.otherHandler = serverHandler ?? throw new ArgumentNullException(nameof(serverHandler));
-            server.otherHandler = clientHandler ?? throw new ArgumentNullException(nameof(clientHandler));
+            client._onDisconnect = clientOnDisconnect;
+            server._onDisconnect = serverOnDisconnect;
 
-            client.otherConnection = server;
-            server.otherConnection = client;
+            client._otherHandler = serverHandler ?? throw new ArgumentNullException(nameof(serverHandler));
+            server._otherHandler = clientHandler ?? throw new ArgumentNullException(nameof(clientHandler));
+
+            client._otherConnection = server;
+            server._otherConnection = client;
 
             client.State = ConnectionState.Connected;
             server.State = ConnectionState.Connected;
 
-            client.name = "[Client Pipe Connection]";
-            server.name = "[Server Pipe Connection]";
+            client._name = "[Client Pipe Connection]";
+            server._name = "[Server Pipe Connection]";
 
             return (client, server);
         }
 
         public override string ToString()
         {
-            return name;
+            return _name;
         }
 
         IEndPoint IConnection.EndPoint => new PipeEndPoint();
-
+        void IConnection.FlushBatch() { /* nothing to flush for pipe */ }
 
         public ConnectionState State { get; private set; } = ConnectionState.Connected;
 
@@ -68,10 +69,10 @@ namespace Mirage
                 return;
 
             State = ConnectionState.Disconnected;
-            OnDisconnect?.Invoke();
+            _onDisconnect?.Invoke();
 
             // tell other connection to also disconnect
-            otherConnection.Disconnect();
+            _otherConnection.Disconnect();
         }
 
         public INotifyToken SendNotify(byte[] packet, int offset, int length)
@@ -81,7 +82,7 @@ namespace Mirage
 
             receive(packet, offset, length);
 
-            return new PipeNotifyToken();
+            return AutoCompleteToken.Instance;
         }
         public INotifyToken SendNotify(ArraySegment<byte> packet) => SendNotify(packet.Array, packet.Offset, packet.Count);
         public INotifyToken SendNotify(byte[] packet) => SendNotify(packet, 0, packet.Length);
@@ -106,8 +107,8 @@ namespace Mirage
 
             receive(message, offset, length);
         }
-        public void SendReliable(ArraySegment<byte> packet) => SendReliable(packet.Array, packet.Offset, packet.Count);
-        public void SendReliable(byte[] packet) => SendReliable(packet, 0, packet.Length);
+        public void SendReliable(ArraySegment<byte> message) => SendReliable(message.Array, message.Offset, message.Count);
+        public void SendReliable(byte[] message) => SendReliable(message, 0, message.Length);
 
 
         public void SendUnreliable(byte[] packet, int offset, int length)
@@ -123,7 +124,7 @@ namespace Mirage
         private void receive(byte[] packet, int offset, int length)
         {
             logger.Assert(State == ConnectionState.Connected);
-            otherHandler.ReceiveMessage(otherConnection, new ArraySegment<byte>(packet, offset, length));
+            _otherHandler.ReceiveMessage(_otherConnection, new ArraySegment<byte>(packet, offset, length));
         }
 
         public class PipeEndPoint : IEndPoint
@@ -134,35 +135,5 @@ namespace Mirage
                 throw new NotSupportedException();
             }
         }
-
-        /// <summary>
-        /// Token that invokes <see cref="INotifyToken.Delivered"/> immediately
-        /// </summary>
-        public struct PipeNotifyToken : INotifyToken
-        {
-            public event Action Delivered
-            {
-                add
-                {
-                    value.Invoke();
-                }
-                remove
-                {
-                    // nothing
-                }
-            }
-            public event Action Lost
-            {
-                add
-                {
-                    // nothing
-                }
-                remove
-                {
-                    // nothing
-                }
-            }
-        }
-
     }
 }

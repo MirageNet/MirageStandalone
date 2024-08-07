@@ -1,10 +1,13 @@
 using System.Collections.Generic;
+using Mirage.CodeGen;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
 namespace Mirage.Weaver
 {
-    // todo add docs for what this type does
+    /// <summary>
+    /// Replaces SyncVar fields with their property getter/setting
+    /// </summary>
     public class PropertySiteProcessor
     {
         // setter functions that replace [SyncVar] member variable references. dict<field, replacement>
@@ -18,56 +21,24 @@ namespace Mirage.Weaver
             CodePass.ForEachInstruction(moduleDef, WeavedMethods, ProcessInstruction);
         }
 
-        private static bool WeavedMethods(MethodDefinition md) =>
-                        md.Name != ".cctor" &&
-                        md.Name != NetworkBehaviourProcessor.ProcessedFunctionName &&
-                        !md.IsConstructor;
-
-        // replaces syncvar write access with the NetworkXYZ.get property calls
-        void ProcessInstructionSetterField(Instruction i, FieldReference opField)
+        private static bool WeavedMethods(MethodDefinition md)
         {
-            // does it set a field that we replaced?
-            if (Setters.TryGetValue(opField, out MethodDefinition replacement))
-            {
-                if (opField.DeclaringType.IsGenericInstance || opField.DeclaringType.HasGenericParameters) // We're calling to a generic class
-                {
-                    var newField = i.Operand as FieldReference;
-                    var genericType = (GenericInstanceType)newField.DeclaringType;
-                    i.OpCode = OpCodes.Callvirt;
-                    i.Operand = replacement.MakeHostInstanceGeneric(genericType);
-                }
-                else
-                {
-                    //replace with property
-                    i.OpCode = OpCodes.Call;
-                    i.Operand = replacement;
-                }
-            }
+            if (md.Name == ".cctor")
+                return false;
+            if (md.Name == NetworkBehaviourProcessor.ProcessedFunctionName)
+                return false;
+
+            // dont use network get/set inside unity consturctors
+            // this is because they will try to set dirtyBit and throw unity errors
+            if (md.DeclaringType.IsDerivedFrom<UnityEngine.Object>() && md.IsConstructor)
+                return false;
+
+            // note: Constructor for non-unity types should be safe to use, for example get/set a sync var on a NB from without a struct
+
+            return true;
         }
 
-        // replaces syncvar read access with the NetworkXYZ.get property calls
-        void ProcessInstructionGetterField(Instruction i, FieldReference opField)
-        {
-            // does it set a field that we replaced?
-            if (Getters.TryGetValue(opField, out MethodDefinition replacement))
-            {
-                if (opField.DeclaringType.IsGenericInstance || opField.DeclaringType.HasGenericParameters) // We're calling to a generic class
-                {
-                    var newField = i.Operand as FieldReference;
-                    var genericType = (GenericInstanceType)newField.DeclaringType;
-                    i.OpCode = OpCodes.Callvirt;
-                    i.Operand = replacement.MakeHostInstanceGeneric(genericType);
-                }
-                else
-                {
-                    //replace with property
-                    i.OpCode = OpCodes.Call;
-                    i.Operand = replacement;
-                }
-            }
-        }
-
-        Instruction ProcessInstruction(MethodDefinition md, Instruction instr, SequencePoint sequencePoint)
+        private Instruction ProcessInstruction(MethodDefinition md, Instruction instr, SequencePoint sequencePoint)
         {
             if (instr.OpCode == OpCodes.Stfld && instr.Operand is FieldReference opFieldst)
             {
@@ -109,27 +80,71 @@ namespace Mirage.Weaver
             return instr;
         }
 
-        Instruction ProcessInstructionLoadAddress(MethodDefinition md, Instruction instr, FieldReference opField)
+        // replaces syncvar write access with the NetworkXYZ.get property calls
+        private void ProcessInstructionSetterField(Instruction i, FieldReference opField)
         {
             // does it set a field that we replaced?
-            if (Setters.TryGetValue(opField, out MethodDefinition replacement))
+            if (Setters.TryGetValue(opField, out var replacement))
+            {
+                if (opField.DeclaringType.IsGenericInstance || opField.DeclaringType.HasGenericParameters) // We're calling to a generic class
+                {
+                    var newField = i.Operand as FieldReference;
+                    var genericType = (GenericInstanceType)newField.DeclaringType;
+                    i.OpCode = OpCodes.Callvirt;
+                    i.Operand = replacement.MakeHostInstanceGeneric(genericType);
+                }
+                else
+                {
+                    //replace with property
+                    i.OpCode = OpCodes.Call;
+                    i.Operand = replacement;
+                }
+            }
+        }
+
+        // replaces syncvar read access with the NetworkXYZ.get property calls
+        private void ProcessInstructionGetterField(Instruction i, FieldReference opField)
+        {
+            // does it set a field that we replaced?
+            if (Getters.TryGetValue(opField, out var replacement))
+            {
+                if (opField.DeclaringType.IsGenericInstance || opField.DeclaringType.HasGenericParameters) // We're calling to a generic class
+                {
+                    var newField = i.Operand as FieldReference;
+                    var genericType = (GenericInstanceType)newField.DeclaringType;
+                    i.OpCode = OpCodes.Callvirt;
+                    i.Operand = replacement.MakeHostInstanceGeneric(genericType);
+                }
+                else
+                {
+                    //replace with property
+                    i.OpCode = OpCodes.Call;
+                    i.Operand = replacement;
+                }
+            }
+        }
+
+        private Instruction ProcessInstructionLoadAddress(MethodDefinition md, Instruction instr, FieldReference opField)
+        {
+            // does it set a field that we replaced?
+            if (Setters.TryGetValue(opField, out var replacement))
             {
                 // we have a replacement for this property
                 // is the next instruction a initobj?
-                Instruction nextInstr = instr.Next;
+                var nextInstr = instr.Next;
 
                 if (nextInstr.OpCode == OpCodes.Initobj)
                 {
                     // we need to replace this code with:
                     //     var tmp = new MyStruct();
                     //     this.set_Networkxxxx(tmp);
-                    ILProcessor worker = md.Body.GetILProcessor();
-                    VariableDefinition tmpVariable = md.AddLocal(opField.FieldType);
+                    var worker = md.Body.GetILProcessor();
+                    var tmpVariable = md.AddLocal(opField.FieldType);
 
                     worker.InsertBefore(instr, worker.Create(OpCodes.Ldloca, tmpVariable));
                     worker.InsertBefore(instr, worker.Create(OpCodes.Initobj, opField.FieldType));
                     worker.InsertBefore(instr, worker.Create(OpCodes.Ldloc, tmpVariable));
-                    Instruction newInstr = worker.Create(OpCodes.Call, replacement);
+                    var newInstr = worker.Create(OpCodes.Call, replacement);
                     worker.InsertBefore(instr, newInstr);
 
                     worker.Remove(instr);

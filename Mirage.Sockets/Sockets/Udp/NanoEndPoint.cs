@@ -1,3 +1,5 @@
+// windows, linux or standalone c#, unless EXCLUDE_NANOSOCKETS is defined
+#if !EXCLUDE_NANOSOCKETS && (UNITY_EDITOR_WIN || UNITY_EDITOR_LINUX || UNITY_STANDALONE_WIN || UNITY_STANDALONE_LINUX || NETCOREAPP || NET_5_0_OR_GREATER)
 using System;
 using Mirage.SocketLayer;
 using NanoSockets;
@@ -6,11 +8,10 @@ namespace Mirage.Sockets.Udp
 {
     public sealed class NanoEndPoint : IEndPoint, IEquatable<NanoEndPoint>
     {
-        public Address address;
+        public Address address = new Address();
 
         public NanoEndPoint(string host, ushort port)
         {
-            address = new Address();
             address.port = port;
             UDP.SetHostName(ref address, host);
         }
@@ -50,5 +51,5 @@ namespace Mirage.Sockets.Udp
             return address.ToString();
         }
     }
-
 }
+#endif

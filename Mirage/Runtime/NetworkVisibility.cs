@@ -1,17 +1,28 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Mirage
 {
-    // the name NetworkProximityCheck implies that it's only about objects in
-    // proximity to the player. But we might have room based, guild based,
-    // instanced based checks too, so NetworkVisibility is more fitting.
-    //
-    // note: we inherit from NetworkBehaviour so we can reuse .Identity, etc.
-    // note: unlike UNET, we only allow 1 proximity checker per NetworkIdentity.
+    /// <summary>
+    /// NetworkBehaviour that calculates if the gameObject should be visible to different players or not
+    /// </summary>
     [DisallowMultipleComponent]
-    public abstract class NetworkVisibility : NetworkBehaviour
+    public abstract class NetworkVisibility : NetworkBehaviour, INetworkVisibility
     {
+        public delegate void VisibilityChanged(INetworkPlayer player, bool visible);
+
+        /// <summary>
+        /// Invoked on server when visibility changes for player
+        /// <para>Invoked before Spawn/Show/Hide message is sent to client</para>
+        /// <para>Invoked when object is spawned, but not when it is desotroyed</para>
+        /// </summary>
+        public event VisibilityChanged OnVisibilityChanged;
+
+        internal void InvokeVisibilityChanged(INetworkPlayer player, bool visible)
+        {
+            OnVisibilityChanged?.Invoke(player, visible);
+        }
+
         /// <summary>
         /// Callback used by the visibility system to determine if an observer (player) can see this object.
         /// <para>If this function returns true, the network connection will be added as an observer.</para>
@@ -32,7 +43,7 @@ namespace Mirage
         /// <param name="initialize">True if the set of observers is being built for the first time.</param>
         public virtual void OnRebuildObservers(HashSet<INetworkPlayer> observers, bool initialize)
         {
-            foreach (INetworkPlayer player in Server.Players)
+            foreach (var player in Server.AllPlayers)
             {
                 if (OnCheckObserver(player))
                 {

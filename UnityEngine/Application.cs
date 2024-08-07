@@ -17,8 +17,14 @@ namespace UnityEngine
         public static RuntimePlatform platform { get; } = RuntimePlatform.WindowsPlayer;
         public static bool isEditor => platform == RuntimePlatform.WindowsEditor;
 
+        // needs to do nothing for standalone
+        public static bool runInBackground { get; set; }
+
         public static event Action quitting;
+
+        public static void InvokeQuitting()
+        {
+            quitting?.Invoke();
+        }
     }
-
-
 }

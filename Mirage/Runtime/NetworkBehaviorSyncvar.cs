@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Mirage.Serialization;
 
 namespace Mirage
@@ -13,25 +14,30 @@ namespace Mirage
         /// The network client that spawned the parent object
         /// used to lookup the identity if it exists
         /// </summary>
-        internal IObjectLocator objectLocator;
-        internal uint netId;
-        internal int componentId;
+        internal IObjectLocator _objectLocator;
+        internal uint _netId;
+        internal int _componentId;
 
-        internal NetworkBehaviour component;
+        internal NetworkBehaviour _component;
 
-        internal uint NetId => component != null ? component.NetId : netId;
-        internal int ComponentId => component != null ? component.ComponentIndex : componentId;
+        public NetworkBehaviorSyncvar(NetworkBehaviour behaviour) : this()
+        {
+            _component = behaviour;
+        }
+
+        internal uint NetId => _component != null ? _component.NetId : _netId;
+        internal int ComponentId => _component != null ? _component.ComponentIndex : _componentId;
 
         public NetworkBehaviour Value
         {
             get
             {
-                if (component != null)
-                    return component;
+                if (_component != null)
+                    return _component;
 
-                if (objectLocator != null && objectLocator.TryGetIdentity(NetId, out NetworkIdentity result))
+                if (_objectLocator != null && _objectLocator.TryGetIdentity(NetId, out var result))
                 {
-                    return result.NetworkBehaviours[componentId];
+                    return result.NetworkBehaviours[_componentId];
                 }
 
 
@@ -42,12 +48,64 @@ namespace Mirage
             {
                 if (value == null)
                 {
-                    netId = 0;
-                    componentId = 0;
+                    _netId = 0;
+                    _componentId = 0;
                 }
-                component = value;
+                _component = value;
             }
         }
+
+        /// <summary>
+        /// returns Value cast as T
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <exception cref="System.InvalidCastException"></exception>
+        /// /// <returns></returns>
+        public T GetAs<T>() where T : NetworkBehaviour
+        {
+            var value = Value;
+            if (value is null)
+                return null;
+            else
+                return (T)value;
+        }
+
+        public static implicit operator NetworkBehaviorSyncvar(NetworkBehaviour behaviour) => new NetworkBehaviorSyncvar(behaviour);
+    }
+
+    public struct NetworkBehaviorSyncvar<T> where T : NetworkBehaviour
+    {
+        private NetworkBehaviorSyncvar inner;
+
+        public NetworkBehaviorSyncvar(T behaviour) : this()
+        {
+            inner = new NetworkBehaviorSyncvar(behaviour);
+        }
+
+        internal uint NetId
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => inner.NetId;
+        }
+
+        internal int ComponentId
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => inner.ComponentId;
+        }
+
+        public T Value
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => (T)inner.Value;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            set => inner.Value = value;
+        }
+
+        public static implicit operator NetworkBehaviorSyncvar<T>(T behaviour) => new NetworkBehaviorSyncvar<T>(behaviour);
+        public static implicit operator NetworkBehaviorSyncvar(NetworkBehaviorSyncvar<T> generic) => generic.inner;
+        public static explicit operator NetworkBehaviorSyncvar<T>(NetworkBehaviorSyncvar syncvar) => new NetworkBehaviorSyncvar<T>() { inner = syncvar };
     }
 
 
@@ -61,19 +119,34 @@ namespace Mirage
 
         public static NetworkBehaviorSyncvar ReadNetworkBehaviourSyncVar(this NetworkReader reader)
         {
-            uint netId = reader.ReadPackedUInt32();
-            int componentId = reader.ReadPackedInt32();
+            var mirageReader = reader.ToMirageReader();
+
+            var netId = reader.ReadPackedUInt32();
+            var componentId = reader.ReadPackedInt32();
 
             NetworkIdentity identity = null;
-            bool hasValue = reader.ObjectLocator?.TryGetIdentity(netId, out identity) ?? false;
+            var hasValue = mirageReader.ObjectLocator?.TryGetIdentity(netId, out identity) ?? false;
 
             return new NetworkBehaviorSyncvar
             {
-                objectLocator = reader.ObjectLocator,
-                netId = netId,
-                componentId = componentId,
-                component = hasValue ? identity.NetworkBehaviours[componentId] : null
+                _objectLocator = mirageReader.ObjectLocator,
+                _netId = netId,
+                _componentId = componentId,
+                _component = hasValue ? identity.NetworkBehaviours[componentId] : null
             };
+        }
+
+        [WeaverSerializeCollection]
+        public static void WriteGenericNetworkBehaviorSyncVar<T>(this NetworkWriter writer, NetworkBehaviorSyncvar<T> id) where T : NetworkBehaviour
+        {
+            WriteNetworkBehaviorSyncVar(writer, id);
+        }
+
+        [WeaverSerializeCollection]
+        public static NetworkBehaviorSyncvar<T> ReadGenericNetworkBehaviourSyncVar<T>(this NetworkReader reader) where T : NetworkBehaviour
+        {
+            var syncvar = ReadNetworkBehaviourSyncVar(reader);
+            return (NetworkBehaviorSyncvar<T>)syncvar;
         }
     }
 }

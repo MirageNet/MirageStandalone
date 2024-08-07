@@ -9,13 +9,13 @@ namespace Mirage
     /// </summary>
     public class SyncVarReceiver
     {
-        static readonly ILogger logger = LogFactory.GetLogger(typeof(SyncVarReceiver));
+        private static readonly ILogger logger = LogFactory.GetLogger(typeof(SyncVarReceiver));
 
-        private readonly IObjectLocator objectLocator;
+        private readonly IObjectLocator _objectLocator;
 
         public SyncVarReceiver(NetworkClient client, IObjectLocator objectLocator)
         {
-            this.objectLocator = objectLocator;
+            _objectLocator = objectLocator;
             if (client.IsConnected)
             {
                 AddHandlers(client);
@@ -29,29 +29,70 @@ namespace Mirage
 
         private void AddHandlers(NetworkClient client)
         {
-            if (client.IsLocalClient)
-            {
-                client.MessageHandler.RegisterHandler<UpdateVarsMessage>(_ => { });
-            }
-            else
+            // dont add if host player
+            // server should never sent to host
+            if (!client.IsHost)
             {
                 client.MessageHandler.RegisterHandler<UpdateVarsMessage>(OnUpdateVarsMessage);
             }
         }
 
-        void OnUpdateVarsMessage(UpdateVarsMessage msg)
+        public SyncVarReceiver(NetworkServer server, IObjectLocator objectLocator)
         {
-            if (logger.LogEnabled()) logger.Log("ClientScene.OnUpdateVarsMessage " + msg.netId);
+            _objectLocator = objectLocator;
+            server.MessageHandler.RegisterHandler<UpdateVarsMessage>(OnUpdateVarsMessage);
+        }
 
-            if (objectLocator.TryGetIdentity(msg.netId, out NetworkIdentity localObject))
+
+        private void OnUpdateVarsMessage(INetworkPlayer sender, UpdateVarsMessage msg)
+        {
+            if (logger.LogEnabled()) logger.Log("SyncVarReceiver.OnUpdateVarsMessage " + msg.NetId);
+
+            if (_objectLocator.TryGetIdentity(msg.NetId, out var localObject))
             {
-                using (PooledNetworkReader networkReader = NetworkReaderPool.GetReader(msg.payload))
+                // dont throw in Validate
+                // owner or settings might have changed since client sent it
+                if (!ValidateReceive(sender, localObject))
+                    return;
+
+                using (var networkReader = NetworkReaderPool.GetReader(msg.Payload, _objectLocator))
                     localObject.OnDeserializeAll(networkReader, false);
             }
             else
             {
-                if (logger.WarnEnabled()) logger.LogWarning("Did not find target for sync message for " + msg.netId + " . Note: this can be completely normal because UDP messages may arrive out of order, so this message might have arrived after a Destroy message.");
+                if (logger.WarnEnabled()) logger.LogWarning("Did not find target for sync message for " + msg.NetId + " . Note: this can be completely normal because UDP messages may arrive out of order, so this message might have arrived after a Destroy message.");
             }
+        }
+
+        private bool ValidateReceive(INetworkPlayer sender, NetworkIdentity identity)
+        {
+            // only need to validate if we are server
+            // client can always receive from server
+            if (!identity.IsServer)
+                return true;
+
+            // only owner of object can send to server
+            if (identity.Owner != sender)
+            {
+                if (logger.WarnEnabled()) logger.LogWarning($"UpdateVarsMessage for object without authority [netId={identity.NetId}]");
+                return false;
+            }
+
+            var behaviours = identity.NetworkBehaviours;
+            for (var i = 0; i < behaviours.Length; i++)
+            {
+                var comp = behaviours[i];
+                // check if any sync setting have to.server 
+                // if we find atleast 1, then that is enough to start reading
+                // we check each component again when we read it
+
+                // we dont need to check From.Owner, if we are sending to server we must be sending from owner
+                if ((comp.SyncSettings.To & SyncTo.Server) != 0)
+                    return true;
+            }
+
+            if (logger.WarnEnabled()) logger.LogWarning($"UpdateVarsMessage for object without any NetworkBehaviours with SyncFrom.Owner [netId={identity.NetId}]");
+            return false;
         }
     }
 }

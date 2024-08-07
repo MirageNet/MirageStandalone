@@ -1,111 +1,62 @@
 using System;
-using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+using UnityEngine;
 
 namespace Cysharp.Threading.Tasks
 {
-    [AsyncMethodBuilder(typeof(UniTaskMethodBuilder))]
-    public struct UniTask
+    public static class UniTaskExtensions
     {
-        public void Forget() { }
-        public TaskAwaiter GetAwaiter() => throw new NotSupportedException();
-    }
-    public struct UniTaskMethodBuilder
-    {
-        public static UniTaskMethodBuilder Create() => default;
-        public UniTask Task => default(UniTask);
-        public void SetResult() { }
-        public void SetException(Exception exception) { }
-
-        public void Start<TStateMachine>(ref TStateMachine stateMachine) where TStateMachine : IAsyncStateMachine
-        {
-            stateMachine.MoveNext();
-        }
-        public void SetStateMachine(IAsyncStateMachine stateMachine)
-        {
-            stateMachine.MoveNext();
-        }
-
-        public void AwaitOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter, ref TStateMachine stateMachine)
-            where TAwaiter : INotifyCompletion where TStateMachine : IAsyncStateMachine
-        {
-        }
-        public void AwaitUnsafeOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter, ref TStateMachine stateMachine)
-            where TAwaiter : ICriticalNotifyCompletion where TStateMachine : IAsyncStateMachine
-        {
-        }
-    }
-
-    [AsyncMethodBuilder(typeof(UniTaskMethodBuilder<>))]
-    public struct UniTask<T>
-    {
-        public TaskAwaiter<T> GetAwaiter() => throw new NotSupportedException();
-    }
-    public struct UniTaskMethodBuilder<T>
-    {
-        public static UniTaskMethodBuilder Create() => default;
-        public UniTask<T> Task => default(UniTask<T>);
-        public void SetResult() { }
-        public void SetException(Exception exception) { }
-
-        public void Start<TStateMachine>(ref TStateMachine stateMachine) where TStateMachine : IAsyncStateMachine
-        {
-            stateMachine.MoveNext();
-        }
-        public void SetStateMachine(IAsyncStateMachine stateMachine)
-        {
-            stateMachine.MoveNext();
-        }
+        public static UniTask ToUniTask(this AsyncOperation op) => throw new NotSupportedException();
 
 
-        public void AwaitOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter, ref TStateMachine stateMachine)
-            where TAwaiter : INotifyCompletion where TStateMachine : IAsyncStateMachine
+        public static async UniTask<(bool, T)> TimeoutWithoutException<T>(this UniTask<T> task, TimeSpan timeout, DelayType delayType)
         {
+            var delayCancellationTokenSource = new CancellationTokenSource();
+            var timeoutTask = Delay(timeout, delayCancellationTokenSource.Token);
+
+            int winArgIndex;
+            (bool IsCanceled, T Result) taskResult;
+            try
+            {
+                (var leftReturned, taskResult) = await UniTask.WhenAny(task.SuppressCancellationThrow(), timeoutTask);
+                winArgIndex = leftReturned ? 0 : 1;
+            }
+            catch
+            {
+                delayCancellationTokenSource.Cancel();
+                delayCancellationTokenSource.Dispose();
+                return (true, default);
+            }
+
+            // timeout
+            if (winArgIndex == 1)
+            {
+                return (true, default);
+            }
+            else
+            {
+                delayCancellationTokenSource.Cancel();
+                delayCancellationTokenSource.Dispose();
+            }
+
+            if (taskResult.IsCanceled)
+            {
+                return (true, default);
+            }
+
+            return (false, taskResult.Result);
         }
-        public void AwaitUnsafeOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter, ref TStateMachine stateMachine)
-            where TAwaiter : ICriticalNotifyCompletion where TStateMachine : IAsyncStateMachine
+
+        internal static async UniTask Delay(TimeSpan timeout, CancellationToken token)
         {
+            await Task.Delay(timeout, token);
         }
     }
 
-    [AsyncMethodBuilder(typeof(UniTaskVoidMethodBuilder))]
-    public struct UniTaskVoid
+
+    public enum DelayType
     {
-        public TaskAwaiter GetAwaiter() => throw new NotSupportedException();
-
-        public void Forget() { }
-    }
-    public struct UniTaskVoidMethodBuilder
-    {
-        public static UniTaskVoidMethodBuilder Create() => default;
-        public UniTaskVoid Task => default(UniTaskVoid);
-        public void SetResult() { }
-        public void SetException(Exception exception) { }
-
-        public void Start<TStateMachine>(ref TStateMachine stateMachine) where TStateMachine : IAsyncStateMachine
-        {
-            stateMachine.MoveNext();
-        }
-        public void SetStateMachine(IAsyncStateMachine stateMachine)
-        {
-            stateMachine.MoveNext();
-        }
-
-
-        public void AwaitOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter, ref TStateMachine stateMachine)
-            where TAwaiter : INotifyCompletion where TStateMachine : IAsyncStateMachine
-        {
-        }
-        public void AwaitUnsafeOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter, ref TStateMachine stateMachine)
-            where TAwaiter : ICriticalNotifyCompletion where TStateMachine : IAsyncStateMachine
-        {
-        }
-    }
-    public class AutoResetUniTaskCompletionSource<T>
-    {
-        public UniTask<T> Task => throw new NotSupportedException();
-
-        public static AutoResetUniTaskCompletionSource<T> Create() => throw new NotSupportedException();
-
-        public bool TrySetResult(T result) => throw new NotSupportedException();
+        UnscaledDeltaTime
     }
 }

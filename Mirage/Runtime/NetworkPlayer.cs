@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Mirage.Authentication;
 using Mirage.Logging;
 using Mirage.Serialization;
 using Mirage.SocketLayer;
@@ -17,11 +18,11 @@ namespace Mirage
     /// <para>NetworkConnection objects also act as observers for networked objects. When a connection is an observer of a networked object with a NetworkIdentity, then the object will be visible to corresponding client for the connection, and incremental state changes will be sent to the client.</para>
     /// <para>There are many virtual functions on NetworkConnection that allow its behaviour to be customized. NetworkClient and NetworkServer can both be made to instantiate custom classes derived from NetworkConnection by setting their networkConnectionClass member variable.</para>
     /// </remarks>
-    public sealed class NetworkPlayer : INetworkPlayer, IMessageSender
+    public sealed class NetworkPlayer : INetworkPlayer
     {
-        static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkPlayer));
+        private static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkPlayer));
 
-        private readonly HashSet<NetworkIdentity> visList = new HashSet<NetworkIdentity>();
+        private readonly HashSet<NetworkIdentity> _visList = new HashSet<NetworkIdentity>();
 
         /// <summary>
         /// Transport level connection
@@ -31,24 +32,42 @@ namespace Mirage
         /// <para>Transport layers connections begin at one. So on a client with a single connection to a server, the connectionId of that connection will be one. In NetworkServer, the connectionId of the local connection is zero.</para>
         /// <para>Clients do not know their connectionId on the server, and do not know the connectionId of other clients on the server.</para>
         /// </remarks>
-        private readonly IConnection connection;
+        private readonly IConnection _connection;
+
+        public bool IsHost { get; }
 
         /// <summary>
         /// Has this player been marked as disconnected
         /// <para>Messages sent to disconnected players will be ignored</para>
         /// </summary>
-        bool isDisconnected = false;
+        private bool _isDisconnected = false;
 
         /// <summary>
-        /// Marks if this player has been accepted by a <see cref="NetworkAuthenticator"/>
+        /// Backing field for <see cref="Identity"/>
         /// </summary>
-        public bool IsAuthenticated { get; set; }
+        private NetworkIdentity _identity;
 
         /// <summary>
-        /// General purpose object to hold authentication data, character selection, tokens, etc.
-        /// associated with the connection for reference after Authentication completes.
+        /// Authentication information for this NetworkPlayer
         /// </summary>
-        public object AuthenticationData { get; set; }
+        public PlayerAuthentication Authentication { get; private set; }
+
+        public void SetAuthentication(PlayerAuthentication authentication, bool allowReplace)
+        {
+            if (Authentication == null || allowReplace)
+            {
+                Authentication = authentication;
+            }
+            else
+            {
+                throw new InvalidOperationException("Can't set Authentication because it is already set");
+            }
+        }
+
+        /// <summary>
+        /// Helper methods to check if Authentication is set
+        /// </summary>
+        public bool IsAuthenticated => Authentication != null;
 
         /// <summary>
         /// Flag that tells us if the scene has fully loaded in for player.
@@ -63,13 +82,30 @@ namespace Mirage
         /// </summary>
         public bool HasCharacter => Identity != null;
 
+        public IConnection Connection => _connection;
+
         /// <summary>
         /// The IP address / URL / FQDN associated with the connection.
         /// Can be useful for a game master to do IP Bans etc.
+        /// <para>
+        /// Best used to get concrete Endpoint type based on the <see cref="SocketFactory"/> being used
+        /// </para>
         /// </summary>
-        public IEndPoint Address => connection.EndPoint;
+        public IEndPoint Address => _connection.EndPoint;
 
-        public IConnection Connection => connection;
+        /// <summary>Connect called on client, but server has not replied yet</summary>
+        public bool IsConnecting => _connection.State == ConnectionState.Connecting;
+
+        /// <summary>Server and Client are connected and can send messages</summary>
+        public bool IsConnected => _connection.State == ConnectionState.Connected;
+
+        /// <summary>
+        /// List of all networkIdentity that this player can see
+        /// <para>Only valid on server</para>
+        /// </summary>
+        public IReadOnlyCollection<NetworkIdentity> VisList => _visList;
+
+        public IReadOnlyCollection<NetworkIdentity> OwnedObjects => _ownedObjects;
 
         /// <summary>
         /// Disconnects the player.
@@ -80,8 +116,12 @@ namespace Mirage
         /// </remarks>
         public void Disconnect()
         {
-            connection.Disconnect();
-            isDisconnected = true;
+            // dont need to call disconnect twice, so just return
+            if (_isDisconnected)
+                return;
+
+            _connection.Disconnect();
+            _isDisconnected = true;
         }
 
         /// <summary>
@@ -90,13 +130,29 @@ namespace Mirage
         /// </summary>
         public void MarkAsDisconnected()
         {
-            isDisconnected = true;
+            _isDisconnected = true;
         }
+
+        /// <summary>
+        /// Event called when <see cref="Identity"/> property is changed
+        /// </summary>
+        public event Action<NetworkIdentity> OnIdentityChanged;
 
         /// <summary>
         /// The NetworkIdentity for this connection.
         /// </summary>
-        public NetworkIdentity Identity { get; set; }
+        public NetworkIdentity Identity
+        {
+            get => _identity;
+            set
+            {
+                if (_identity == value)
+                    return;
+
+                _identity = value;
+                OnIdentityChanged?.Invoke(_identity);
+            }
+        }
 
         /// <summary>
         /// A list of the NetworkIdentity objects owned by this connection. This list is read-only.
@@ -105,17 +161,17 @@ namespace Mirage
         /// </summary>
         // IMPORTANT: this needs to be <NetworkIdentity>, not <uint netId>. fixes a bug where DestroyOwnedObjects wouldn't find
         //            the netId anymore: https://github.com/vis2k/Mirror/issues/1380 . Works fine with NetworkIdentity pointers though.
-        private readonly HashSet<NetworkIdentity> clientOwnedObjects = new HashSet<NetworkIdentity>();
+        private readonly HashSet<NetworkIdentity> _ownedObjects = new HashSet<NetworkIdentity>();
 
         /// <summary>
         /// Creates a new NetworkConnection with the specified address and connectionId
         /// </summary>
         /// <param name="networkConnectionId"></param>
-        public NetworkPlayer(IConnection connection)
+        public NetworkPlayer(IConnection connection, bool isHost)
         {
-            this.connection = connection ?? throw new ArgumentNullException(nameof(connection));
+            _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+            IsHost = isHost;
         }
-
 
         /// <summary>
         /// This sends a network message to the connection.
@@ -124,16 +180,17 @@ namespace Mirage
         /// <param name="msg">The message to send.</param>
         /// <param name="channelId">The transport layer channel to send on.</param>
         /// <returns></returns>
-        public void Send<T>(T message, int channelId = Channel.Reliable)
+        public void Send<T>(T message, Channel channelId = Channel.Reliable)
         {
-            if (isDisconnected) { return; }
+            if (_isDisconnected) { return; }
 
-            using (PooledNetworkWriter writer = NetworkWriterPool.GetWriter())
+            using (var writer = NetworkWriterPool.GetWriter())
             {
                 MessagePacker.Pack(message, writer);
 
                 var segment = writer.ToArraySegment();
                 NetworkDiagnostics.OnSend(message, segment.Count, 1);
+                if (logger.LogEnabled()) logger.Log($"Sending {typeof(T)} to {this} channel:{channelId}");
                 Send(segment, channelId);
             }
         }
@@ -144,17 +201,31 @@ namespace Mirage
         /// </summary>
         /// <param name="segment"></param>
         /// <param name="channelId"></param>
-        public void Send(ArraySegment<byte> segment, int channelId = Channel.Reliable)
+        public void Send(ArraySegment<byte> segment, Channel channelId = Channel.Reliable)
         {
-            if (isDisconnected) { return; }
+            if (_isDisconnected)
+                return;
 
-            if (channelId == Channel.Reliable)
+            try
             {
-                connection.SendReliable(segment);
+                if (channelId == Channel.Reliable)
+                {
+                    _connection.SendReliable(segment);
+                }
+                else
+                {
+                    _connection.SendUnreliable(segment);
+                }
             }
-            else
+            catch (BufferFullException e)
             {
-                connection.SendUnreliable(segment);
+                logger.LogError($"Disconnecting player because send buffer was full. {e}");
+                Disconnect();
+            }
+            catch (NoConnectionException e)
+            {
+                logger.LogError($"Inner connection was disconnected, but disconnected flag not yet. {e}");
+                Disconnect();
             }
         }
 
@@ -165,17 +236,32 @@ namespace Mirage
         /// <param name="msg">The message to send.</param>
         /// <param name="channelId">The transport layer channel to send on.</param>
         /// <returns></returns>
-        public void Send<T>(T message, INotifyCallBack token)
+        public void Send<T>(T message, INotifyCallBack callBacks)
         {
-            if (isDisconnected) { return; }
+            if (_isDisconnected) { return; }
 
-            using (PooledNetworkWriter writer = NetworkWriterPool.GetWriter())
+            using (var writer = NetworkWriterPool.GetWriter())
             {
                 MessagePacker.Pack(message, writer);
 
                 var segment = writer.ToArraySegment();
                 NetworkDiagnostics.OnSend(message, segment.Count, 1);
-                connection.SendNotify(segment, token);
+                if (logger.LogEnabled()) logger.Log($"Sending {typeof(T)} to {this} channel:Notify");
+
+                try
+                {
+                    _connection.SendNotify(segment, callBacks);
+                }
+                catch (BufferFullException e)
+                {
+                    logger.LogError($"Disconnecting player because send buffer was full. {e}");
+                    Disconnect();
+                }
+                catch (NoConnectionException e)
+                {
+                    logger.LogError($"Inner connection was disconnected, but disconnected flag not yet. {e}");
+                    Disconnect();
+                }
             }
         }
 
@@ -186,12 +272,24 @@ namespace Mirage
 
         public void AddToVisList(NetworkIdentity identity)
         {
-            visList.Add(identity);
+            if (logger.LogEnabled()) logger.Log($"Adding {identity} to Player[{Address}] VisList");
+            _visList.Add(identity);
         }
 
         public void RemoveFromVisList(NetworkIdentity identity)
         {
-            visList.Remove(identity);
+            if (logger.LogEnabled()) logger.Log($"Removing {identity} from Player[{Address}] VisList");
+            _visList.Remove(identity);
+        }
+
+        /// <summary>
+        /// Checks if player can see NetworkIdentity
+        /// </summary>
+        /// <param name="identity"></param>
+        /// <returns></returns>
+        public bool ContainsInVisList(NetworkIdentity identity)
+        {
+            return _visList.Contains(identity);
         }
 
         /// <summary>
@@ -200,21 +298,71 @@ namespace Mirage
         /// </summary>
         public void RemoveAllVisibleObjects()
         {
-            foreach (NetworkIdentity identity in visList)
+            if (logger.LogEnabled()) logger.Log($"Removing all from Player[{Address}] VisList");
+
+            foreach (var identity in _visList)
             {
                 identity.RemoveObserverInternal(this);
             }
-            visList.Clear();
+            _visList.Clear();
         }
 
-        public void AddOwnedObject(NetworkIdentity networkIdentity)
+        public void AddOwnedObject(NetworkIdentity identity)
         {
-            clientOwnedObjects.Add(networkIdentity);
+            if (logger.LogEnabled()) logger.Log($"Adding {identity} to Player[{Address}] OwnedObjects");
+
+            _ownedObjects.Add(identity);
         }
 
-        public void RemoveOwnedObject(NetworkIdentity networkIdentity)
+        public void RemoveOwnedObject(NetworkIdentity identity)
         {
-            clientOwnedObjects.Remove(networkIdentity);
+            if (logger.LogEnabled()) logger.Log($"Removing {identity} from Player[{Address}] OwnedObjects");
+
+            _ownedObjects.Remove(identity);
+
+            // if is main character, then also remove that
+            if (Identity == identity)
+            {
+                Identity = null;
+            }
+        }
+
+        public void RemoveAllOwnedObject(bool sendAuthorityChangeEvent)
+        {
+            if (logger.LogEnabled()) logger.Log($"Removing all Player[{Address}] OwnedObjects");
+
+            // create a copy because the list might be modified when destroying
+            var ownedObjects = new HashSet<NetworkIdentity>(_ownedObjects);
+            var mainIdentity = Identity;
+
+            foreach (var netIdentity in ownedObjects)
+            {
+                // remove main object last
+                if (netIdentity == mainIdentity)
+                    continue;
+
+                if (netIdentity == null)
+                    continue;
+
+                // code from Identity.RemoveClientAuthority, but without the safety checks, we dont need them here
+                netIdentity.SetOwner(null);
+
+                if (sendAuthorityChangeEvent && netIdentity.ServerObjectManager != null)
+                    Send(new RemoveAuthorityMessage { NetId = netIdentity.NetId });
+            }
+
+            if (mainIdentity != null)
+            {
+                // code from ServerObjectManager.RemoveCharacter, but without the safety checks, we dont need them here
+                mainIdentity.SetOwner(null);
+
+                if (sendAuthorityChangeEvent && mainIdentity.ServerObjectManager != null)
+                    Send(new RemoveCharacterMessage { KeepAuthority = false });
+
+            }
+
+            // clear the hashset because we destroyed them all
+            _ownedObjects.Clear();
         }
 
         /// <summary>
@@ -223,29 +371,37 @@ namespace Mirage
         /// </summary>
         public void DestroyOwnedObjects()
         {
-            // create a copy because the list might be modified when destroying
-            var ownedObjects = new HashSet<NetworkIdentity>(clientOwnedObjects);
+            if (logger.LogEnabled()) logger.Log($"Destroying all Player[{Address}] OwnedObjects");
 
-            foreach (NetworkIdentity netIdentity in ownedObjects)
+            // create a copy because the list might be modified when destroying
+            var ownedObjects = new HashSet<NetworkIdentity>(_ownedObjects);
+
+            foreach (var netIdentity in ownedObjects)
             {
                 //dont destroy self yet.
                 if (netIdentity == Identity)
                     continue;
 
-                if (netIdentity != null && netIdentity.ServerObjectManager != null)
-                {
-                    // use SOM on object we are destroying, it should be set if object is spawned,
-                    // we can't use Identity.ServerObjectManager because if Identity is null we wont have a SOM
-                    netIdentity.ServerObjectManager.Destroy(netIdentity);
-                }
+                TryDestroy(netIdentity);
             }
 
-            if (Identity != null && Identity.ServerObjectManager != null)
-                // Destroy the connections own identity.
-                Identity.ServerObjectManager.Destroy(Identity.gameObject);
+            // Destroy the connections own identity.
+            TryDestroy(Identity);
 
             // clear the hashset because we destroyed them all
-            clientOwnedObjects.Clear();
+            _ownedObjects.Clear();
+        }
+
+        private static void TryDestroy(NetworkIdentity identity)
+        {
+            if (identity != null && identity.ServerObjectManager != null)
+            {
+                // use SOM on object we are destroying, it should be set if object is spawned,
+                //     previous this used the SOM from the player's character,
+                //     we can't use that because if Identity is null we wont have a SOM
+                // make sure to check sceneObject, we dont want to destory server's copy of a Scene object
+                identity.ServerObjectManager.Destroy(identity, destroyServerObject: !identity.IsSceneObject);
+            }
         }
     }
 }

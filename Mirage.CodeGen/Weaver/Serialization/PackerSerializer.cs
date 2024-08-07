@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using Mirage.CodeGen;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -6,10 +7,9 @@ namespace Mirage.Weaver.Serialization
 {
     internal class PackerSerializer : ValueSerializer
     {
-        readonly FieldReference packerField;
-
-        readonly LambdaExpression packMethod;
-        readonly LambdaExpression unpackMethod;
+        private readonly FieldReference packerField;
+        private readonly LambdaExpression packMethod;
+        private readonly LambdaExpression unpackMethod;
 
         public override bool IsIntType { get; }
 

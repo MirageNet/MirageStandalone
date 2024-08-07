@@ -1,6 +1,8 @@
 using System;
 using System.Linq;
 using Cysharp.Threading.Tasks;
+using Mirage.CodeGen;
+using Mirage.Serialization;
 using Mirage.Weaver.Serialization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -28,22 +30,16 @@ namespace Mirage.Weaver
         /// </summary>
         protected abstract Type AttributeType { get; }
 
-        // helper functions to check if the method has a NetworkPlayer parameter
-        protected static bool HasNetworkPlayerParameter(MethodDefinition md)
+        protected static bool HasFirstParameter<T>(MethodDefinition md)
         {
             return md.Parameters.Count > 0 &&
-                   IsNetworkPlayer(md.Parameters[0].ParameterType);
-        }
-
-        protected static bool IsNetworkPlayer(TypeReference type)
-        {
-            return type.Resolve().ImplementsInterface<INetworkPlayer>();
+                   md.Parameters[0].ParameterType.Implements<T>();
         }
 
         /// <summary>
         /// Hash to name names unique
         /// </summary>
-        static int GetStableHash(MethodReference method)
+        private static int GetStableHash(MethodReference method)
         {
             return method.FullName.GetStableHashCode();
         }
@@ -57,6 +53,74 @@ namespace Mirage.Weaver
         {
             // append fullName hash to end to support overloads, but keep "md.Name" so it is human readable when debugging
             return $"UserCode_{method.Name}_{GetStableHash(method)}";
+        }
+
+
+        /// <summary>
+        /// Generates a skeleton for a ServerRpc
+        /// </summary>
+        /// <param name="td"></param>
+        /// <param name="method"></param>
+        /// <param name="userCodeFunc"></param>
+        /// <returns>The newly created skeleton method</returns>
+        /// <remarks>
+        /// Generates code like this:
+        /// <code>
+        /// protected static void Skeleton_MyServerRpc(NetworkBehaviour obj, NetworkReader reader, NetworkConnection senderConnection)
+        /// {
+        ///     if (!obj.Identity.server.active)
+        ///     {
+        ///         return;
+        ///     }
+        ///     ((ShipControl) obj).UserCode_Thrust(reader.ReadSingle(), (int) reader.ReadPackedUInt32());
+        /// }
+        /// </code>
+        /// </remarks>
+        protected MethodDefinition GenerateSkeleton(MethodDefinition method, MethodDefinition userCodeFunc, CustomAttribute clientRpcAttr, ValueSerializer[] paramSerializers)
+        {
+            var newName = SkeletonMethodName(method);
+            var rpc = method.DeclaringType.AddMethod(newName,
+                MethodAttributes.Family | MethodAttributes.HideBySig | MethodAttributes.Static,
+                userCodeFunc.ReturnType);
+
+            _ = rpc.AddParam<NetworkBehaviour>("behaviour");
+            var readerParameter = rpc.AddParam<NetworkReader>("reader");
+            var senderParameter = rpc.AddParam<INetworkPlayer>("senderConnection");
+            _ = rpc.AddParam<int>("replyId");
+
+
+            var worker = rpc.Body.GetILProcessor();
+
+            // load `behaviour.`
+            worker.Append(worker.Create(OpCodes.Ldarg_0));
+            worker.Append(worker.Create(OpCodes.Castclass, method.DeclaringType.MakeSelfGeneric()));
+
+            var hasNetworkConnection = false;
+            // serverRpc will not pass in this attribute, it has nothing extra to do
+            if (clientRpcAttr != null)
+            {
+                // NetworkConnection parameter is only required for RpcTarget.Player
+                var target = clientRpcAttr.GetField(nameof(ClientRpcAttribute.target), RpcTarget.Observers);
+                hasNetworkConnection = target == RpcTarget.Player && HasFirstParameter<INetworkPlayer>(method);
+
+                if (hasNetworkConnection)
+                {
+                    // this is called in the skeleton (the client)
+                    // the client should just get the connection to the server and pass that in
+                    worker.Append(worker.Create(OpCodes.Ldarg_0));
+                    worker.Append(worker.Create(OpCodes.Call, (NetworkBehaviour nb) => nb.Client));
+                    worker.Append(worker.Create(OpCodes.Callvirt, (NetworkClient nb) => nb.Player));
+                }
+            }
+
+            // read and load args
+            ReadArguments(method, worker, readerParameter, senderParameter, hasNetworkConnection, paramSerializers);
+
+            // invoke actual ServerRpc function
+            worker.Append(worker.Create(OpCodes.Callvirt, userCodeFunc.MakeHostInstanceSelfGeneric()));
+            worker.Append(worker.Create(OpCodes.Ret));
+
+            return rpc;
         }
 
         /// <summary>
@@ -79,10 +143,10 @@ namespace Mirage.Weaver
         protected ValueSerializer[] GetValueSerializers(MethodDefinition method)
         {
             var serializers = new ValueSerializer[method.Parameters.Count];
-            bool error = false;
-            for (int i = 0; i < method.Parameters.Count; i++)
+            var error = false;
+            for (var i = 0; i < method.Parameters.Count; i++)
             {
-                if (IsNetworkPlayer(method.Parameters[i].ParameterType))
+                if (method.Parameters[i].ParameterType.Is<INetworkPlayer>())
                     continue;
 
                 try
@@ -120,28 +184,28 @@ namespace Mirage.Weaver
 
             // NetworkConnection is not sent via the NetworkWriter so skip it here
             // skip first for NetworkConnection in TargetRpc
-            bool skipFirst = ClientRpcWithTarget(method, callType);
+            var skipFirst = ClientRpcWithTarget(method, callType);
 
-            int startingArg = skipFirst ? 1 : 0;
-            for (int i = startingArg; i < method.Parameters.Count; i++)
+            var startingArg = skipFirst ? 1 : 0;
+            for (var i = startingArg; i < method.Parameters.Count; i++)
             {
                 // try/catch for each arg so that it will give error for each
-                ParameterDefinition param = method.Parameters[i];
-                ValueSerializer serializer = paramSerializers[i];
+                var param = method.Parameters[i];
+                var serializer = paramSerializers[i];
                 WriteArgument(worker, writer, param, serializer);
             }
         }
 
-        static bool ClientRpcWithTarget(MethodDefinition method, RemoteCallType callType)
+        private static bool ClientRpcWithTarget(MethodDefinition method, RemoteCallType callType)
         {
             return (callType == RemoteCallType.ClientRpc)
-                && HasNetworkPlayerParameter(method);
+                && HasFirstParameter<INetworkPlayer>(method);
         }
 
         private void WriteArgument(ILProcessor worker, VariableDefinition writer, ParameterDefinition param, ValueSerializer serializer)
         {
             // dont write anything for INetworkPlayer, it is either target or sender
-            if (IsNetworkPlayer(param.ParameterType))
+            if (param.ParameterType.Is<INetworkPlayer>())
                 return;
 
             serializer.AppendWriteParameter(module, worker, writer, param);
@@ -155,18 +219,18 @@ namespace Mirage.Weaver
             CallCmdDoSomething(reader.ReadPackedInt32(), reader.ReadNetworkIdentity())
              */
 
-            int startingArg = skipFirst ? 1 : 0;
-            for (int i = startingArg; i < method.Parameters.Count; i++)
+            var startingArg = skipFirst ? 1 : 0;
+            for (var i = startingArg; i < method.Parameters.Count; i++)
             {
-                ParameterDefinition param = method.Parameters[i];
-                ValueSerializer serializer = paramSerializers[i];
+                var param = method.Parameters[i];
+                var serializer = paramSerializers[i];
                 ReadArgument(worker, readerParameter, senderParameter, param, serializer);
             }
         }
 
         private void ReadArgument(ILProcessor worker, ParameterDefinition readerParameter, ParameterDefinition senderParameter, ParameterDefinition param, ValueSerializer serializer)
         {
-            if (IsNetworkPlayer(param.ParameterType))
+            if (param.ParameterType.Is<INetworkPlayer>())
             {
                 if (senderParameter != null)
                 {
@@ -187,7 +251,7 @@ namespace Mirage.Weaver
         /// check if a method is valid for rpc
         /// </summary>
         /// <exception cref="RpcException">Throws when method is invalid</exception>
-        protected void ValidateMethod(MethodDefinition method, RemoteCallType callType)
+        protected void ValidateMethod(MethodDefinition method)
         {
             if (method.IsAbstract)
             {
@@ -216,50 +280,56 @@ namespace Mirage.Weaver
         /// <exception cref="RpcException">Throws when parameter are invalid</exception>
         protected void ValidateParameters(MethodReference method, RemoteCallType callType)
         {
-            for (int i = 0; i < method.Parameters.Count; i++)
+            for (var i = 0; i < method.Parameters.Count; i++)
             {
-                ParameterDefinition param = method.Parameters[i];
+                var param = method.Parameters[i];
                 ValidateParameter(method, param, callType, i == 0);
             }
         }
+
 
         /// <summary>
         /// checks if return type if valid for rpc
         /// </summary>
         /// <exception cref="RpcException">Throws when parameter are invalid</exception>
-        protected void ValidateReturnType(MethodDefinition md, RemoteCallType callType)
+        protected ReturnType ValidateReturnType(MethodDefinition md, RemoteCallType callType, RpcTarget rpcTarget)
         {
-            TypeReference returnType = md.ReturnType;
+            // void is allowed
+            var returnType = md.ReturnType;
             if (returnType.Is(typeof(void)))
-                return;
+                return ReturnType.Void;
 
-            // only ServerRpc allow UniTask
-            if (callType == RemoteCallType.ServerRpc)
+            if (callType == RemoteCallType.ClientRpc && rpcTarget == RpcTarget.Observers)
+                throw new RpcException($"[ClientRpc] must return void when target is Observers. To return values change target to Player or Owner", md);
+
+            // UniTask is allowed
+            var unitaskType = typeof(UniTask<int>).GetGenericTypeDefinition();
+            if (returnType.Is(unitaskType))
             {
-                Type unitaskType = typeof(UniTask<int>).GetGenericTypeDefinition();
-                if (returnType.Is(unitaskType))
-                    return;
+                var genericReturnType = (GenericInstanceType)returnType;
+                var genericArg = genericReturnType.GenericArguments[0];
+                // ensure serialize functions exist
+                _ = writers.GetFunction_Throws(genericArg);
+                _ = readers.GetFunction_Throws(genericArg);
+
+                return ReturnType.UniTask;
             }
 
-
-            if (callType == RemoteCallType.ServerRpc)
-                throw new RpcException($"Use UniTask<{md.ReturnType}> to return values from [ServerRpc]", md);
-            else
-                throw new RpcException($"[ClientRpc] must return void", md);
+            throw new RpcException($"Use UniTask<{md.ReturnType}> to return values from [ClientRpc] or [ServerRpc]", md);
         }
 
         /// <summary>
         /// checks if a parameter is valid for rpc
         /// </summary>
         /// <exception cref="RpcException">Throws when parameter are invalid</exception>
-        void ValidateParameter(MethodReference method, ParameterDefinition param, RemoteCallType callType, bool firstParam)
+        private void ValidateParameter(MethodReference method, ParameterDefinition param, RemoteCallType callType, bool firstParam)
         {
             if (param.IsOut)
             {
                 throw new RpcException($"{method.Name} cannot have out parameters", method);
             }
 
-            if (IsNetworkPlayer(param.ParameterType))
+            if (param.ParameterType.Is<INetworkPlayer>())
             {
                 if (callType == RemoteCallType.ClientRpc && firstParam)
                 {
@@ -307,11 +377,11 @@ namespace Mirage.Weaver
         //  this returns the newly created method with all the user provided code
         public MethodDefinition SubstituteMethod(MethodDefinition method)
         {
-            string newName = UserCodeMethodName(method);
-            MethodDefinition generatedMethod = method.DeclaringType.AddMethod(newName, method.Attributes, method.ReturnType);
+            var newName = UserCodeMethodName(method);
+            var generatedMethod = method.DeclaringType.AddMethod(newName, method.Attributes, method.ReturnType);
 
             // add parameters
-            foreach (ParameterDefinition pd in method.Parameters)
+            foreach (var pd in method.Parameters)
             {
                 _ = generatedMethod.AddParam(pd.ParameterType, pd.Name);
             }
@@ -320,11 +390,11 @@ namespace Mirage.Weaver
             (generatedMethod.Body, method.Body) = (method.Body, generatedMethod.Body);
 
             // Move over all the debugging information
-            foreach (SequencePoint sequencePoint in method.DebugInformation.SequencePoints)
+            foreach (var sequencePoint in method.DebugInformation.SequencePoints)
                 generatedMethod.DebugInformation.SequencePoints.Add(sequencePoint);
             method.DebugInformation.SequencePoints.Clear();
 
-            foreach (CustomDebugInformation customInfo in method.CustomDebugInformations)
+            foreach (var customInfo in method.CustomDebugInformations)
                 generatedMethod.CustomDebugInformations.Add(customInfo);
             method.CustomDebugInformations.Clear();
 
@@ -340,14 +410,14 @@ namespace Mirage.Weaver
         /// </summary>
         /// <param name="type"></param>
         /// <param name="generatedMethod"></param>
-        void FixRemoteCallToBaseMethod(TypeDefinition type, MethodDefinition method, MethodDefinition generatedMethod)
+        private void FixRemoteCallToBaseMethod(TypeDefinition type, MethodDefinition method, MethodDefinition generatedMethod)
         {
-            string userCodeName = generatedMethod.Name;
-            string rpcName = method.Name;
+            var userCodeName = generatedMethod.Name;
+            var rpcName = method.Name;
 
-            foreach (Instruction instruction in generatedMethod.Body.Instructions)
+            foreach (var instruction in generatedMethod.Body.Instructions)
             {
-                if (!IsCallToMethod(instruction, out MethodDefinition calledMethod))
+                if (!IsCallToMethod(instruction, out var calledMethod))
                     continue;
 
                 // does method have same name? (NOTE: could be overload or non RPC at this point)
@@ -358,10 +428,10 @@ namespace Mirage.Weaver
                 if (!calledMethod.HasCustomAttribute(AttributeType))
                     continue;
 
-                string targetName = UserCodeMethodName(calledMethod);
+                var targetName = UserCodeMethodName(calledMethod);
                 // check this type and base types for methods
                 // if the calledMethod is an rpc, then it will have a UserCode_ method generated for it
-                MethodReference userCodeReplacement = type.GetMethodInBaseType(targetName);
+                var userCodeReplacement = type.GetMethodInBaseType(targetName);
 
                 if (userCodeReplacement == null)
                 {
@@ -375,11 +445,11 @@ namespace Mirage.Weaver
 
                 instruction.Operand = generatedMethod.Module.ImportReference(userCodeReplacement);
 
-                Weaver.DebugLog(type, $"Replacing call to '{calledMethod.FullName}' with '{userCodeReplacement.FullName}' inside '{ generatedMethod.FullName}'");
+                Weaver.DebugLog(type, $"Replacing call to '{calledMethod.FullName}' with '{userCodeReplacement.FullName}' inside '{generatedMethod.FullName}'");
             }
         }
 
-        static bool IsCallToMethod(Instruction instruction, out MethodDefinition calledMethod)
+        private static bool IsCallToMethod(Instruction instruction, out MethodDefinition calledMethod)
         {
             if (instruction.OpCode == OpCodes.Call &&
                 instruction.Operand is MethodDefinition method)

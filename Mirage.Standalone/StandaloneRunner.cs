@@ -12,14 +12,23 @@ namespace Mirage.Standalone
     public class StandaloneRunner
     {
         private Action updated;
+        private bool _running;
+        private readonly int _sleepDelay;
 
-        public StandaloneRunner()
+        public StandaloneRunner(int sleepDelay)
         {
             Debug.unityLogger = new StandaloneLogger();
             InitializeReadWrite.RunMethods();
+            _sleepDelay = sleepDelay;
+            _running = true;
             Update();
 
             Console.WriteLine("Mirage Standalone Runner initialized");
+        }
+        public void Stop()
+        {
+            _running = false;
+            Application.InvokeQuitting();
         }
 
         public NetworkServer AddServer(ushort port = 7777)
@@ -60,7 +69,7 @@ namespace Mirage.Standalone
 
         async void Update()
         {
-            while (true)
+            while (_running)
             {
                 try
                 {
@@ -71,7 +80,7 @@ namespace Mirage.Standalone
                     Console.WriteLine(ex);
                 }
 
-                await Task.Delay(5);
+                await Task.Delay(_sleepDelay);
             }
         }
     }

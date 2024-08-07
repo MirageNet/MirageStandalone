@@ -1,5 +1,7 @@
+using Mirage.CodeGen;
 using Mirage.Serialization;
 using Mono.Cecil;
+using Mono.Cecil.Rocks;
 
 namespace Mirage.Weaver.Serialization
 {
@@ -7,7 +9,7 @@ namespace Mirage.Weaver.Serialization
     {
         public static void CheckZigZag(ICustomAttributeProvider attributeProvider, TypeReference fieldType, ref ValueSerializer valueSerializer)
         {
-            bool hasAttribute = attributeProvider.HasCustomAttribute<ZigZagEncodeAttribute>();
+            var hasAttribute = attributeProvider.HasCustomAttribute<ZigZagEncodeAttribute>();
             if (!hasAttribute)
                 return;
 
@@ -25,7 +27,7 @@ namespace Mirage.Weaver.Serialization
         /// </summary>
         /// <param name="type"></param>
         /// <param name="syncVar"></param>
-        static void ThrowIfUnsignedType(TypeReference type)
+        private static void ThrowIfUnsignedType(TypeReference type)
         {
             // throw if unsigned
             if (type.Is<byte>()
@@ -37,7 +39,7 @@ namespace Mirage.Weaver.Serialization
             if (type.Resolve().IsEnum)
             {
                 // check underlying field is signed
-                TypeReference enumType = type.Resolve().GetEnumUnderlyingType();
+                var enumType = type.Resolve().GetEnumUnderlyingType();
                 ThrowIfUnsignedType(enumType);
             }
         }

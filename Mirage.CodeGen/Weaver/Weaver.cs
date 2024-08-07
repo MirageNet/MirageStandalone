@@ -1,8 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
+using Mirage.CodeGen;
 using Mono.Cecil;
-using Mono.Cecil.Cil;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
 using UnityEngine;
 using ConditionalAttribute = System.Diagnostics.ConditionalAttribute;
@@ -17,52 +16,43 @@ namespace Mirage.Weaver
     /// - <c>WEAVER_DEBUG_TIMER</c><br />
     /// </para>
     /// </summary>
-    public class Weaver
+    public class Weaver : WeaverBase
     {
-        private readonly IWeaverLogger logger;
         private Readers readers;
         private Writers writers;
         private PropertySiteProcessor propertySiteProcessor;
-        private WeaverDiagnosticsTimer timer;
-
-        private AssemblyDefinition CurrentAssembly { get; set; }
 
         [Conditional("WEAVER_DEBUG_LOGS")]
         public static void DebugLog(TypeDefinition td, string message)
         {
-            Console.WriteLine($"Weaver[{td.Name}]{message}");
+            Console.WriteLine($"Weaver[{td.Name}] {message}");
         }
 
-        public Weaver(IWeaverLogger logger)
+        private static void Log(string msg)
         {
-            this.logger = logger;
+            Console.WriteLine($"[Weaver] {msg}");
         }
 
-        public AssemblyDefinition Weave(ICompiledAssembly compiledAssembly)
+        public Weaver(IWeaverLogger logger) : base(logger) { }
+
+        protected override ResultType Process(AssemblyDefinition assembly, ICompiledAssembly compiledAssembly)
         {
+            Log($"Starting weaver on {compiledAssembly.Name}");
             try
             {
-                timer = new WeaverDiagnosticsTimer() { writeToFile = true };
-                timer.Start(compiledAssembly.Name);
-
-                using (timer.Sample("AssemblyDefinitionFor"))
-                {
-                    CurrentAssembly = AssemblyDefinitionFor(compiledAssembly);
-                }
-
-                ModuleDefinition module = CurrentAssembly.MainModule;
+                var module = assembly.MainModule;
                 readers = new Readers(module, logger);
                 writers = new Writers(module, logger);
                 propertySiteProcessor = new PropertySiteProcessor();
-                var rwProcessor = new ReaderWriterProcessor(module, readers, writers);
+                var rwProcessor = new ReaderWriterProcessor(module, readers, writers, logger);
 
-                bool modified = false;
+                var modified = false;
                 using (timer.Sample("ReaderWriterProcessor"))
                 {
                     modified = rwProcessor.Process();
                 }
 
-                IReadOnlyList<FoundType> foundTypes = FindAllClasses(module);
+                var foundTypes = FindAllClasses(module);
 
                 using (timer.Sample("AttributeProcessor"))
                 {
@@ -72,13 +62,12 @@ namespace Mirage.Weaver
 
                 using (timer.Sample("WeaveNetworkBehavior"))
                 {
-                    foreach (FoundType foundType in foundTypes)
+                    foreach (var foundType in foundTypes)
                     {
                         if (foundType.IsNetworkBehaviour)
                             modified |= WeaveNetworkBehavior(foundType);
                     }
                 }
-
 
                 if (modified)
                 {
@@ -93,53 +82,31 @@ namespace Mirage.Weaver
                     }
                 }
 
-                return CurrentAssembly;
+                return ResultType.Success;
             }
             catch (Exception e)
             {
                 logger.Error("Exception :" + e);
-                return null;
+                // write line too because the error about doesn't show stacktrace
+                Console.WriteLine("[WeaverException] :" + e);
+                return ResultType.Failed;
             }
             finally
             {
-                // end in finally incase it return early
-                timer?.End();
+                Log($"Finished weaver on {compiledAssembly.Name}");
             }
         }
 
-        public static AssemblyDefinition AssemblyDefinitionFor(ICompiledAssembly compiledAssembly)
-        {
-            var assemblyResolver = new PostProcessorAssemblyResolver(compiledAssembly);
-            var readerParameters = new ReaderParameters
-            {
-                SymbolStream = new MemoryStream(compiledAssembly.InMemoryAssembly.PdbData),
-                SymbolReaderProvider = new PortablePdbReaderProvider(),
-                AssemblyResolver = assemblyResolver,
-                ReflectionImporterProvider = new PostProcessorReflectionImporterProvider(),
-                ReadingMode = ReadingMode.Immediate
-            };
-
-            var assemblyDefinition = AssemblyDefinition.ReadAssembly(new MemoryStream(compiledAssembly.InMemoryAssembly.PeData), readerParameters);
-
-            //apparently, it will happen that when we ask to resolve a type that lives inside MLAPI.Runtime, and we
-            //are also postprocessing MLAPI.Runtime, type resolving will fail, because we do not actually try to resolve
-            //inside the assembly we are processing. Let's make sure we do that, so that we can use postprocessor features inside
-            //MLAPI.Runtime itself as well.
-            assemblyResolver.AddAssemblyDefinitionBeingOperatedOn(assemblyDefinition);
-
-            return assemblyDefinition;
-        }
-
-        IReadOnlyList<FoundType> FindAllClasses(ModuleDefinition module)
+        private IReadOnlyList<FoundType> FindAllClasses(ModuleDefinition module)
         {
             using (timer.Sample("FindAllClasses"))
             {
                 var foundTypes = new List<FoundType>();
-                foreach (TypeDefinition type in module.Types)
+                foreach (var type in module.Types)
                 {
                     ProcessType(type, foundTypes);
 
-                    foreach (TypeDefinition nested in type.NestedTypes)
+                    foreach (var nested in type.NestedTypes)
                     {
                         ProcessType(nested, foundTypes);
                     }
@@ -153,9 +120,9 @@ namespace Mirage.Weaver
         {
             if (!type.IsClass) return;
 
-            TypeReference parent = type.BaseType;
-            bool isNetworkBehaviour = false;
-            bool isMonoBehaviour = false;
+            var parent = type.BaseType;
+            var isNetworkBehaviour = false;
+            var isMonoBehaviour = false;
             while (parent != null)
             {
                 if (parent.Is<NetworkBehaviour>())
@@ -176,15 +143,15 @@ namespace Mirage.Weaver
             foundTypes.Add(new FoundType(type, isNetworkBehaviour, isMonoBehaviour));
         }
 
-        bool WeaveNetworkBehavior(FoundType foundType)
+        private bool WeaveNetworkBehavior(FoundType foundType)
         {
-            List<TypeDefinition> behaviourClasses = FindAllBaseTypes(foundType);
+            var behaviourClasses = FindAllBaseTypes(foundType);
 
-            bool modified = false;
+            var modified = false;
             // process this and base classes from parent to child order
-            for (int i = behaviourClasses.Count - 1; i >= 0; i--)
+            for (var i = behaviourClasses.Count - 1; i >= 0; i--)
             {
-                TypeDefinition behaviour = behaviourClasses[i];
+                var behaviour = behaviourClasses[i];
                 if (NetworkBehaviourProcessor.WasProcessed(behaviour)) { continue; }
 
                 modified |= new NetworkBehaviourProcessor(behaviour, readers, writers, propertySiteProcessor, logger).Process();
@@ -197,11 +164,11 @@ namespace Mirage.Weaver
         /// </summary>
         /// <param name="foundType"></param>
         /// <returns></returns>
-        static List<TypeDefinition> FindAllBaseTypes(FoundType foundType)
+        private static List<TypeDefinition> FindAllBaseTypes(FoundType foundType)
         {
             var behaviourClasses = new List<TypeDefinition>();
 
-            TypeDefinition type = foundType.TypeDefinition;
+            var type = foundType.TypeDefinition;
             while (type != null)
             {
                 if (type.Is<NetworkBehaviour>())

@@ -11,8 +11,10 @@ namespace Mirage.Collections
 
         public int Count => objects.Count;
         public bool IsReadOnly { get; private set; }
+        void ISyncObject.SetShouldSyncFrom(bool shouldSync) => IsReadOnly = !shouldSync;
+        void ISyncObject.SetNetworkBehaviour(NetworkBehaviour networkBehaviour) { }
 
-        internal int ChangeCount => changes.Count;
+        internal int ChangeCount => _changes.Count;
 
 
         /// <summary>
@@ -53,29 +55,30 @@ namespace Mirage.Collections
             OP_SET
         }
 
-        struct Change
+        private struct Change
         {
-            internal Operation operation;
-            internal TKey key;
-            internal TValue item;
+            public Operation Operation;
+            public TKey Key;
+            public TValue Item;
         }
 
-        readonly List<Change> changes = new List<Change>();
+        private readonly List<Change> _changes = new List<Change>();
+
         // how many changes we need to ignore
         // this is needed because when we initialize the list,
         // we might later receive changes that have already been applied
         // so we need to skip them
-        int changesAhead;
+        private int _changesAhead;
 
         public void Reset()
         {
             IsReadOnly = false;
-            changes.Clear();
-            changesAhead = 0;
+            _changes.Clear();
+            _changesAhead = 0;
             objects.Clear();
         }
 
-        public bool IsDirty => changes.Count > 0;
+        public bool IsDirty => _changes.Count > 0;
 
         public ICollection<TKey> Keys => objects.Keys;
 
@@ -87,28 +90,25 @@ namespace Mirage.Collections
 
         // throw away all the changes
         // this should be called after a successfull sync
-        public void Flush() => changes.Clear();
+        public void Flush() => _changes.Clear();
 
         public SyncIDictionary(IDictionary<TKey, TValue> objects)
         {
             this.objects = objects;
         }
 
-        void AddOperation(Operation op, TKey key, TValue item)
+        private void AddOperation(Operation op, TKey key, TValue item)
         {
-            if (IsReadOnly)
-            {
-                throw new InvalidOperationException("SyncDictionaries can only be modified by the server");
-            }
+            SyncObjectUtils.ThrowIfReadOnly(IsReadOnly);
 
             var change = new Change
             {
-                operation = op,
-                key = key,
-                item = item
+                Operation = op,
+                Key = key,
+                Item = item
             };
 
-            changes.Add(change);
+            _changes.Add(change);
 
             OnChange?.Invoke();
         }
@@ -118,7 +118,7 @@ namespace Mirage.Collections
             // if init,  write the full list content
             writer.WritePackedUInt32((uint)objects.Count);
 
-            foreach (KeyValuePair<TKey, TValue> syncItem in objects)
+            foreach (var syncItem in objects)
             {
                 writer.Write(syncItem.Key);
                 writer.Write(syncItem.Value);
@@ -128,26 +128,26 @@ namespace Mirage.Collections
             // thus the client will need to skip all the pending changes
             // or they would be applied again.
             // So we write how many changes are pending
-            writer.WritePackedUInt32((uint)changes.Count);
+            writer.WritePackedUInt32((uint)_changes.Count);
         }
 
         public void OnSerializeDelta(NetworkWriter writer)
         {
             // write all the queued up changes
-            writer.WritePackedUInt32((uint)changes.Count);
+            writer.WritePackedUInt32((uint)_changes.Count);
 
-            for (int i = 0; i < changes.Count; i++)
+            for (var i = 0; i < _changes.Count; i++)
             {
-                Change change = changes[i];
-                writer.WriteByte((byte)change.operation);
+                var change = _changes[i];
+                writer.WriteByte((byte)change.Operation);
 
-                switch (change.operation)
+                switch (change.Operation)
                 {
                     case Operation.OP_ADD:
                     case Operation.OP_REMOVE:
                     case Operation.OP_SET:
-                        writer.Write(change.key);
-                        writer.Write(change.item);
+                        writer.Write(change.Key);
+                        writer.Write(change.Item);
                         break;
                     case Operation.OP_CLEAR:
                         break;
@@ -157,20 +157,17 @@ namespace Mirage.Collections
 
         public void OnDeserializeAll(NetworkReader reader)
         {
-            // This list can now only be modified by synchronization
-            IsReadOnly = true;
-
             // if init,  write the full list content
-            int count = (int)reader.ReadPackedUInt32();
+            var count = (int)reader.ReadPackedUInt32();
 
             objects.Clear();
-            changes.Clear();
+            _changes.Clear();
             OnClear?.Invoke();
 
-            for (int i = 0; i < count; i++)
+            for (var i = 0; i < count; i++)
             {
-                TKey key = reader.Read<TKey>();
-                TValue obj = reader.Read<TValue>();
+                var key = reader.Read<TKey>();
+                var obj = reader.Read<TValue>();
                 objects.Add(key, obj);
                 OnInsert?.Invoke(key, obj);
             }
@@ -178,25 +175,23 @@ namespace Mirage.Collections
             // We will need to skip all these changes
             // the next time the list is synchronized
             // because they have already been applied
-            changesAhead = (int)reader.ReadPackedUInt32();
+            _changesAhead = (int)reader.ReadPackedUInt32();
             OnChange?.Invoke();
         }
 
         public void OnDeserializeDelta(NetworkReader reader)
         {
-            // This list can now only be modified by synchronization
-            IsReadOnly = true;
-            bool raiseOnChange = false;
+            var raiseOnChange = false;
 
-            int changesCount = (int)reader.ReadPackedUInt32();
+            var changesCount = (int)reader.ReadPackedUInt32();
 
-            for (int i = 0; i < changesCount; i++)
+            for (var i = 0; i < changesCount; i++)
             {
                 var operation = (Operation)reader.ReadByte();
 
                 // apply the operation only if it is a new change
                 // that we have not applied yet
-                bool apply = changesAhead == 0;
+                var apply = _changesAhead == 0;
 
                 switch (operation)
                 {
@@ -224,7 +219,7 @@ namespace Mirage.Collections
                 // we just skipped this change
                 else
                 {
-                    changesAhead--;
+                    _changesAhead--;
                 }
             }
 
@@ -236,8 +231,8 @@ namespace Mirage.Collections
 
         private void DeserializeAdd(NetworkReader reader, bool apply)
         {
-            TKey key = reader.Read<TKey>();
-            TValue item = reader.Read<TValue>();
+            var key = reader.Read<TKey>();
+            var item = reader.Read<TValue>();
             if (apply)
             {
                 objects[key] = item;
@@ -247,11 +242,11 @@ namespace Mirage.Collections
 
         private void DeserializeSet(NetworkReader reader, bool apply)
         {
-            TKey key = reader.Read<TKey>();
-            TValue item = reader.Read<TValue>();
+            var key = reader.Read<TKey>();
+            var item = reader.Read<TValue>();
             if (apply)
             {
-                TValue oldItem = objects[key];
+                var oldItem = objects[key];
                 objects[key] = item;
                 OnSet?.Invoke(key, oldItem, item);
             }
@@ -268,8 +263,8 @@ namespace Mirage.Collections
 
         private void DeserializeRemove(NetworkReader reader, bool apply)
         {
-            TKey key = reader.Read<TKey>();
-            TValue item = reader.Read<TValue>();
+            var key = reader.Read<TKey>();
+            var item = reader.Read<TValue>();
             if (apply)
             {
                 objects.Remove(key);
@@ -288,7 +283,7 @@ namespace Mirage.Collections
 
         public bool Remove(TKey key)
         {
-            if (objects.TryGetValue(key, out TValue item) && objects.Remove(key))
+            if (objects.TryGetValue(key, out var item) && objects.Remove(key))
             {
                 OnRemove?.Invoke(key, item);
                 AddOperation(Operation.OP_REMOVE, key, item);
@@ -304,7 +299,7 @@ namespace Mirage.Collections
             {
                 if (ContainsKey(i))
                 {
-                    TValue oldItem = objects[i];
+                    var oldItem = objects[i];
                     objects[i] = value;
                     OnSet?.Invoke(i, oldItem, value);
                     AddOperation(Operation.OP_SET, i, value);
@@ -331,7 +326,7 @@ namespace Mirage.Collections
 
         public bool Contains(KeyValuePair<TKey, TValue> item)
         {
-            return TryGetValue(item.Key, out TValue val) && EqualityComparer<TValue>.Default.Equals(val, item.Value);
+            return TryGetValue(item.Key, out var val) && EqualityComparer<TValue>.Default.Equals(val, item.Value);
         }
 
         public void CopyTo(KeyValuePair<TKey, TValue>[] array, int arrayIndex)
@@ -345,8 +340,8 @@ namespace Mirage.Collections
                 throw new ArgumentException("The number of items in the SyncDictionary is greater than the available space from " + nameof(arrayIndex) + " to the end of the destination array");
             }
 
-            int i = arrayIndex;
-            foreach (KeyValuePair<TKey, TValue> item in objects)
+            var i = arrayIndex;
+            foreach (var item in objects)
             {
                 array[i] = item;
                 i++;
@@ -355,7 +350,7 @@ namespace Mirage.Collections
 
         public bool Remove(KeyValuePair<TKey, TValue> item)
         {
-            bool result = objects.Remove(item.Key);
+            var result = objects.Remove(item.Key);
             if (result)
             {
                 OnRemove?.Invoke(item.Key, item.Value);

@@ -1,8 +1,14 @@
+// nanosockets breaks on some platforms (like iOS)
+// so only include it for standalone and editor
+// but not for mac because of code signing issue
+// #if !(UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX)
+// #define EXCLUDE_NANOSOCKETS
+// #endif
+
 using System;
 using System.Net;
 using System.Net.Sockets;
 using Mirage.SocketLayer;
-using NanoSockets;
 using UnityEngine;
 
 namespace Mirage.Sockets.Udp
@@ -14,63 +20,63 @@ namespace Mirage.Sockets.Udp
         public string Address = "localhost";
         public ushort Port = 7777;
 
-        [Tooltip("Allows you to set which Socket implementation you want to use.\nAutomatic will use native (NanoSockets) on supported platforms (Windows, Mac & Linux).")]
-        public SocketLib SocketLib;
+        [Tooltip("Which socket implementation do you wish to use?\nThe default (automatic) will attempt to use NanoSockets on supported platforms and fallback to C# Sockets if unsupported.")]
+        public SocketLib SocketLib = SocketLib.Automatic;
 
-        [Header("NanoSocket options")]
+        [Header("NanoSocket-specific Options")]
         public int BufferSize = 256 * 1024;
 
-        bool useNanoSocket => SocketLib == SocketLib.Native || (SocketLib == SocketLib.Automatic && IsDesktop);
+
+        public override int MaxPacketSize => UdpMTU.MaxPacketSize;
+
+        // Determines if we can use NanoSockets for socket-level IO. This will be true if either:
+        // - We *want* to use native library explicitly.
+        // - We have it set to Automatic selection and NanoSockets is supported.
+        private bool useNanoSocket => SocketLib == SocketLib.Native || (SocketLib == SocketLib.Automatic && NanoSocket.Supported);
+
+        /// <summary>
+        /// did this instance call InitUDP.Init? if so then we need to call Deinit too
+        /// </summary>
+        [NonSerialized] private bool _udpNeedRelease = false;
 
         string IHasAddress.Address
         {
             get => Address;
             set => Address = value;
         }
+
         int IHasPort.Port
         {
             get => Port;
             set => Port = checked((ushort)value);
         }
 
-        static int initCount;
-
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        static void ClearCounter()
+        private void Awake()
         {
-            initCount = 0;
+            if (useNanoSocket)
+                InitNanosocket();
         }
 
-        void Awake()
+        private void InitNanosocket()
         {
-            if (!useNanoSocket) return;
-
-            try
+            if (NanoSocket.Supported)
             {
-                if (initCount == 0)
-                {
-                    UDP.Initialize();
-                }
-
-                initCount++;
+                InitUDP.Init();
+                _udpNeedRelease = true;
             }
-            catch (DllNotFoundException)
+            else
             {
-                Debug.LogWarning("Nanosocket dll not found, Using c# Managed Socket instead");
+                Debug.LogWarning("NanoSocket support not available on this platform; falling back to Managed Sockets.");
                 SocketLib = SocketLib.Managed;
-                return;
             }
         }
 
-        void OnDestroy()
+        private void OnDestroy()
         {
-            if (!useNanoSocket) return;
-
-            initCount--;
-
-            if (initCount == 0)
+            if (_udpNeedRelease)
             {
-                UDP.Deinitialize();
+                InitUDP.Deinit();
+                _udpNeedRelease = false;
             }
         }
 
@@ -78,45 +84,65 @@ namespace Mirage.Sockets.Udp
         {
             ThrowIfNotSupported();
 
-            if (useNanoSocket) return new NanoSocket(this);
-
-            return new UdpSocket();
+            if (useNanoSocket)
+            {
+                return new NanoSocket(this);
+            }
+            else
+            {
+                return new UdpSocket();
+            }
         }
 
         public override ISocket CreateServerSocket()
         {
             ThrowIfNotSupported();
 
-            if (useNanoSocket) return new NanoSocket(this);
-
-            return new UdpSocket();
+            if (useNanoSocket)
+            {
+                return new NanoSocket(this);
+            }
+            else
+            {
+                return new UdpSocket();
+            }
         }
 
         public override IEndPoint GetBindEndPoint()
         {
-            if (useNanoSocket) return new NanoEndPoint("::0", Port);
-
-            return new EndPointWrapper(new IPEndPoint(IPAddress.IPv6Any, Port));
+            if (useNanoSocket)
+            {
+                return new NanoEndPoint("::0", Port);
+            }
+            else
+            {
+                return new EndPointWrapper(new IPEndPoint(IPAddress.IPv6Any, Port));
+            }
         }
 
         public override IEndPoint GetConnectEndPoint(string address = null, ushort? port = null)
         {
-            string addressString = address ?? Address;
-            IPAddress ipAddress = getAddress(addressString);
+            var addressString = address ?? Address;
+            var ipAddress = getAddress(addressString);
 
-            ushort portIn = port ?? Port;
+            var portIn = port ?? Port;
 
-            if (useNanoSocket) return new NanoEndPoint(addressString, portIn);
-
-            return new EndPointWrapper(new IPEndPoint(ipAddress, portIn));
+            if (useNanoSocket)
+            {
+                return new NanoEndPoint(addressString, portIn);
+            }
+            else
+            {
+                return new EndPointWrapper(new IPEndPoint(ipAddress, portIn));
+            }
         }
 
         private IPAddress getAddress(string addressString)
         {
-            if (IPAddress.TryParse(addressString, out IPAddress address))
+            if (IPAddress.TryParse(addressString, out var address))
                 return address;
 
-            IPAddress[] results = Dns.GetHostAddresses(addressString);
+            var results = Dns.GetHostAddresses(addressString);
             if (results.Length == 0)
             {
                 throw new SocketException((int)SocketError.HostNotFound);
@@ -127,20 +153,23 @@ namespace Mirage.Sockets.Udp
             }
         }
 
-        void ThrowIfNotSupported()
+        /// <summary>
+        /// Explicitly throws an exception if a platform is not supported.
+        /// Currently only fires on WebGL.
+        /// </summary>
+        /// <exception cref="NotSupportedException">Tells you why it's not supported.</exception>
+        private void ThrowIfNotSupported()
         {
-            if (IsWebgl)
+            if (IsWebGL)
             {
-                throw new NotSupportedException("Udp Socket can not be created in Webgl builds, Use WebSocket instead");
+                throw new NotSupportedException("The WebGL platform does not support UDP Sockets. Please use WebSockets instead.");
             }
         }
 
-        private static bool IsWebgl => Application.platform == RuntimePlatform.WebGLPlayer;
-        private static bool IsDesktop =>
-            Application.platform == RuntimePlatform.LinuxPlayer
-            || Application.platform == RuntimePlatform.OSXPlayer
-            || Application.platform == RuntimePlatform.WindowsPlayer
-            || Application.isEditor;
+        /// <summary>
+        /// Is this platform a WebGL-based one?
+        /// </summary>
+        private static bool IsWebGL => Application.platform == RuntimePlatform.WebGLPlayer;
     }
 
     public class EndPointWrapper : IEndPoint
@@ -174,8 +203,29 @@ namespace Mirage.Sockets.Udp
         IEndPoint IEndPoint.CreateCopy()
         {
             // copy the inner endpoint
-            EndPoint copy = inner.Create(inner.Serialize());
+            var copy = inner.Create(inner.Serialize());
             return new EndPointWrapper(copy);
         }
+    }
+
+    public class UdpMTU
+    {
+        /// <summary>
+        /// IPv6 + UDP Header
+        /// </summary>
+        private const int HEADER_SIZE = 40 + 8;
+
+        /// <summary>
+        /// MTU is expected to be atleast this number
+        /// </summary>
+        private const int MIN_MTU = 1280;
+
+        /// <summary>
+        /// Max size of array that will be sent to or can be received from <see cref="ISocket"/>
+        /// <para>This will also be the size of all buffers used by <see cref="Peer"/></para>
+        /// <para>This is not max message size because this size includes packets header added by <see cref="Peer"/></para>
+        /// </summary>
+        // todo move these settings to socket
+        public static int MaxPacketSize => MIN_MTU - HEADER_SIZE;
     }
 }

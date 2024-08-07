@@ -1,5 +1,6 @@
 using System;
 using System.Linq.Expressions;
+using Mirage.CodeGen;
 using Mirage.Serialization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -18,7 +19,7 @@ namespace Mirage.Weaver.Serialization
                 throw new QuaternionPackException($"{fieldType} is not a supported type for [QuaternionPack]");
             }
 
-            int bitCount = (int)attribute.ConstructorArguments[0].Value;
+            var bitCount = (int)attribute.ConstructorArguments[0].Value;
 
             if (bitCount <= 0)
                 throw new QuaternionPackException("BitCount should be above 0");
@@ -44,12 +45,12 @@ namespace Mirage.Weaver.Serialization
 
         protected override FieldDefinition CreatePackerField(ModuleDefinition module, string fieldName, TypeDefinition holder, int settings)
         {
-            FieldDefinition packerField = AddPackerField<QuaternionPacker>(holder, fieldName);
+            var packerField = AddPackerField<QuaternionPacker>(holder, fieldName);
 
             holder.AddToStaticConstructor((worker) =>
             {
                 worker.Append(worker.Create(OpCodes.Ldc_I4, settings));
-                MethodReference packerCtor = module.ImportReference(() => new QuaternionPacker(default(int)));
+                var packerCtor = module.ImportReference(() => new QuaternionPacker(default(int)));
                 worker.Append(worker.Create(OpCodes.Newobj, packerCtor));
                 worker.Append(worker.Create(OpCodes.Stsfld, packerField));
             });

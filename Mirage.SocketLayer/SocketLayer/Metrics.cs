@@ -5,8 +5,6 @@ namespace Mirage.SocketLayer
         public readonly Sequencer Sequencer;
         public readonly Frame[] buffer;
         public uint tick;
-        [System.Obsolete("Frame is now a struct, use buffer and tick instead if you need to set data")]
-        public Frame Current => buffer[tick];
 
         public Metrics(int bitSize = 10)
         {
@@ -85,6 +83,22 @@ namespace Mirage.SocketLayer
         {
             buffer[tick].receiveMessagesNotifyCount++;
             buffer[tick].receiveMessagesNotifyBytes += length;
+        }
+
+        public void OnReceiveMessage(PacketType packetType, int length)
+        {
+            switch (packetType)
+            {
+                case PacketType.Reliable:
+                    OnReceiveMessageReliable(length);
+                    break;
+                case PacketType.Unreliable:
+                    OnReceiveMessageUnreliable(length);
+                    break;
+                case PacketType.Notify:
+                    OnReceiveMessageNotify(length);
+                    break;
+            }
         }
 
         public struct Frame

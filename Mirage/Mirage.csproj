@@ -2,13 +2,33 @@
 
   <PropertyGroup>
     <OutputType>Library</OutputType>
-    <TargetFramework>net5.0</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
   </PropertyGroup>
 
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <PackageProjectUrl></PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MirageNet/MirageStandalone</RepositoryUrl>
+    <AssemblyVersion>146.2.1</AssemblyVersion> <!-- Mirage version -->
+    <Version>146.2.1</Version> <!-- package version -->
+    <PackageId>MirageNet.$(AssemblyName)</PackageId>
+    <Title>$(AssemblyName)</Title>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>mirage3.png</PackageIcon>
   </PropertyGroup>
+
+
+  <PropertyGroup>
+    <MirageCodeGenExe>../Mirage.CodeGen/bin/Release/net6.0/win-x64/publish</MirageCodeGenExe>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="./mirage3.png" Pack="true" PackagePath="" />
+    <None Include="./README.md" Pack="true" PackagePath="" />
+    <Content Include="$(MirageCodeGenExe)/**/*.dll" Pack="true" PackagePath="CodeGen" Condition="Exists($(MirageCodeGenExe))" />
+    <Content Include="$(MirageCodeGenExe)/**/*.exe" Pack="true" PackagePath="CodeGen" Condition="Exists($(MirageCodeGenExe))" />
+    <Content Include="$(MirageCodeGenExe)/**/*.json" Pack="true" PackagePath="CodeGen" Condition="Exists($(MirageCodeGenExe))" />
+  </ItemGroup>
 
   <ItemGroup>
     <Compile Remove="MirageTests\**" />
@@ -21,12 +41,32 @@
     <None Remove="WeaverExample\**" />
     <None Remove="Weaver\**" />
   </ItemGroup>
-
+  
+  
   <ItemGroup>
-    <ProjectReference Include="..\Mirage.Logging\Mirage.Logging.csproj" />
-    <ProjectReference Include="..\Mirage.SocketLayer\Mirage.SocketLayer.csproj" />
-    <ProjectReference Include="..\Mirage.Sockets\Mirage.Sockets.csproj" />
-    <ProjectReference Include="..\UnityEngine\FakeUnityEngine.csproj" />
+    <Content Include="bin\$(Configuration)\$(TargetFramework)\*.dll">  
+      <PackagePath>lib\$(TargetFramework)\</PackagePath>
+      <Pack>true</Pack>
+    </Content>
+  </ItemGroup>
+  
+  
+  <ItemGroup>
+    <PackageReference Include="UniTask" Version="2.5.5" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Mirage.Logging\Mirage.Logging.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\Mirage.SocketLayer\Mirage.SocketLayer.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\Mirage.Sockets\Mirage.Sockets.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\UnityEngine\FakeUnityEngine.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+  </ItemGroup>
 </Project>

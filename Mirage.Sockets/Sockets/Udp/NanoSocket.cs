@@ -1,21 +1,20 @@
+// windows, linux or standalone c#, unless EXCLUDE_NANOSOCKETS is defined
+#if !EXCLUDE_NANOSOCKETS && (UNITY_EDITOR_WIN || UNITY_EDITOR_LINUX || UNITY_STANDALONE_WIN || UNITY_STANDALONE_LINUX || NETCOREAPP || NET_5_0_OR_GREATER)
 using System;
 using Mirage.SocketLayer;
 using NanoSockets;
 
 namespace Mirage.Sockets.Udp
 {
-    // todo Create an Exception in mirage that can be re-used by multiple sockets (makes it easier for user to catch)
-    public class NanoSocketException : Exception
-    {
-        public NanoSocketException(string message) : base(message) { }
-    }
+
     public sealed class NanoSocket : ISocket, IDisposable
     {
-        Socket socket;
-        NanoEndPoint receiveEndPoint;
-        readonly int bufferSize;
+        public static bool Supported => true;
 
-        bool needsDisposing;
+        private Socket socket;
+        private NanoEndPoint receiveEndPoint;
+        private readonly int bufferSize;
+        private bool needsDisposing;
 
         public NanoSocket(UdpSocketFactory factory)
         {
@@ -26,7 +25,7 @@ namespace Mirage.Sockets.Udp
             Dispose();
         }
 
-        void InitSocket()
+        private void CreateSocket()
         {
             socket = UDP.Create(bufferSize, bufferSize);
             UDP.SetDontFragment(socket);
@@ -38,8 +37,8 @@ namespace Mirage.Sockets.Udp
         {
             receiveEndPoint = (NanoEndPoint)endPoint;
 
-            InitSocket();
-            int result = UDP.Bind(socket, ref receiveEndPoint.address);
+            CreateSocket();
+            var result = UDP.Bind(socket, ref receiveEndPoint.address);
             if (result != 0)
             {
                 throw new NanoSocketException("Socket Bind failed: address or port might already be in use");
@@ -62,8 +61,8 @@ namespace Mirage.Sockets.Udp
         {
             receiveEndPoint = (NanoEndPoint)endPoint;
 
-            InitSocket();
-            int result = UDP.Connect(socket, ref receiveEndPoint.address);
+            CreateSocket();
+            var result = UDP.Connect(socket, ref receiveEndPoint.address);
             if (result != 0)
             {
                 throw new NanoSocketException("Socket Connect failed");
@@ -77,7 +76,7 @@ namespace Mirage.Sockets.Udp
 
         public int Receive(byte[] buffer, out IEndPoint endPoint)
         {
-            int count = UDP.Receive(socket, ref receiveEndPoint.address, buffer, buffer.Length);
+            var count = UDP.Receive(socket, ref receiveEndPoint.address, buffer, buffer.Length);
             endPoint = receiveEndPoint;
 
             return count;
@@ -90,3 +89,4 @@ namespace Mirage.Sockets.Udp
         }
     }
 }
+#endif

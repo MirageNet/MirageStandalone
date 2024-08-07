@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using Mirage.Logging;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityEngine.Serialization;
 
 namespace Mirage
 {
@@ -11,30 +10,50 @@ namespace Mirage
     /// <summary>
     /// Spawns a player as soon as the connection is authenticated
     /// </summary>
+    [HelpURL("https://miragenet.github.io/Mirage/docs/guides/game-objects/spawn-player/")]
+    [AddComponentMenu("Network/CharacterSpawner")]
     public class CharacterSpawner : MonoBehaviour
     {
-        static readonly ILogger logger = LogFactory.GetLogger(typeof(CharacterSpawner));
+        private static readonly ILogger logger = LogFactory.GetLogger(typeof(CharacterSpawner));
 
-        [FormerlySerializedAs("client")]
+        [Header("References")]
         public NetworkClient Client;
-        [FormerlySerializedAs("server")]
         public NetworkServer Server;
-        [FormerlySerializedAs("sceneManager")]
         public NetworkSceneManager SceneManager;
-        [FormerlySerializedAs("clientObjectManager")]
         public ClientObjectManager ClientObjectManager;
-        [FormerlySerializedAs("serverObjectManager")]
         public ServerObjectManager ServerObjectManager;
-        [FormerlySerializedAs("playerPrefab")]
+
+        [Header("Spawn")]
         public NetworkIdentity PlayerPrefab;
 
-        /// <summary>
-        /// Whether to span the player upon connection automatically
-        /// </summary>
+        [Tooltip("Whether to span the player upon connection automatically")]
         public bool AutoSpawn = true;
 
+        [Tooltip("Should the characters gameObject name be set when it is spawned")]
+        public bool SetName = true;
+
+        [Header("Location")]
+        public int startPositionIndex;
+
+        /// <summary>
+        /// List of transforms where players can be spawned
+        /// </summary>
+        public List<Transform> startPositions = new List<Transform>();
+
+        /// <summary>
+        /// Enumeration of methods of where to spawn player objects in multiplayer games.
+        /// </summary>
+        public enum PlayerSpawnMethod { Random, RoundRobin }
+
+        /// <summary>
+        /// The current method of spawning players used by the CharacterSpawner.
+        /// </summary>
+        [Tooltip("Round Robin or Random order of Start Position selection")]
+        public PlayerSpawnMethod playerSpawnMethod;
+
+
         // Start is called before the first frame update
-        public virtual void Awake()
+        protected internal virtual void Awake()
         {
             if (PlayerPrefab == null)
             {
@@ -62,7 +81,7 @@ namespace Mirage
             }
         }
 
-        void OnDestroy()
+        protected virtual void OnDestroy()
         {
             if (Client != null && SceneManager != null)
             {
@@ -114,7 +133,7 @@ namespace Mirage
             Client.Send(new AddCharacterMessage());
         }
 
-        void OnServerAddPlayerInternal(INetworkPlayer player, AddCharacterMessage msg)
+        private void OnServerAddPlayerInternal(INetworkPlayer player, AddCharacterMessage msg)
         {
             logger.Log("CharacterSpawner.OnServerAddPlayer");
 
@@ -138,12 +157,21 @@ namespace Mirage
         /// <param name="player">Connection from client.</param>
         public virtual void OnServerAddPlayer(INetworkPlayer player)
         {
-            Transform startPos = GetStartPosition();
-            NetworkIdentity character = startPos != null
+            var startPos = GetStartPosition();
+            var character = startPos != null
                 ? Instantiate(PlayerPrefab, startPos.position, startPos.rotation)
                 : Instantiate(PlayerPrefab);
 
+            if (SetName)
+                SetCharacterName(player, character);
             ServerObjectManager.AddCharacter(player, character.gameObject);
+        }
+
+        protected virtual void SetCharacterName(INetworkPlayer player, NetworkIdentity character)
+        {
+            // When spawning a player game object, Unity defaults to something like "MyPlayerObject(clone)"
+            // which sucks... So let's override it and make it easier to debug. Credit to Mirror for the nice touch.
+            character.name = $"{PlayerPrefab.name} {player.Address}";
         }
 
         /// <summary>
@@ -162,28 +190,10 @@ namespace Mirage
             }
             else
             {
-                Transform startPosition = startPositions[startPositionIndex];
+                var startPosition = startPositions[startPositionIndex];
                 startPositionIndex = (startPositionIndex + 1) % startPositions.Count;
                 return startPosition;
             }
         }
-
-        public int startPositionIndex;
-
-        /// <summary>
-        /// List of transforms where players can be spawned
-        /// </summary>
-        public List<Transform> startPositions = new List<Transform>();
-
-        /// <summary>
-        /// Enumeration of methods of where to spawn player objects in multiplayer games.
-        /// </summary>
-        public enum PlayerSpawnMethod { Random, RoundRobin }
-
-        /// <summary>
-        /// The current method of spawning players used by the CharacterSpawner.
-        /// </summary>
-        [Tooltip("Round Robin or Random order of Start Position selection")]
-        public PlayerSpawnMethod playerSpawnMethod;
     }
 }

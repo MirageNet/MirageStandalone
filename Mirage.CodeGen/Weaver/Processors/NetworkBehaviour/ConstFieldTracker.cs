@@ -1,4 +1,5 @@
-﻿using Mono.Cecil;
+﻿using Mirage.CodeGen;
+using Mono.Cecil;
 
 namespace Mirage.Weaver.NetworkBehaviours
 {
@@ -28,7 +29,7 @@ namespace Mirage.Weaver.NetworkBehaviours
 
         public void Set(int countInCurrent)
         {
-            int totalSyncVars = GetInBase() + countInCurrent;
+            var totalSyncVars = GetInBase() + countInCurrent;
 
             if (totalSyncVars >= max)
             {

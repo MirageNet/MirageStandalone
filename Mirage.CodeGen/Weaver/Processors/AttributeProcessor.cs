@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Mirage.CodeGen;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -10,16 +11,14 @@ namespace Mirage.Weaver
     /// Injects server/client active checks for [Server/Client] attributes
     /// </para>
     /// </summary>
-    class AttributeProcessor
+    internal class AttributeProcessor
     {
         private readonly IWeaverLogger logger;
-
-        readonly MethodReference IsServer;
-        readonly MethodReference IsClient;
-        readonly MethodReference HasAuthority;
-        readonly MethodReference IsLocalPlayer;
-
-        bool modified = false;
+        private readonly MethodReference IsServer;
+        private readonly MethodReference IsClient;
+        private readonly MethodReference HasAuthority;
+        private readonly MethodReference IsLocalPlayer;
+        private bool modified = false;
 
         public AttributeProcessor(ModuleDefinition module, IWeaverLogger logger)
         {
@@ -34,7 +33,7 @@ namespace Mirage.Weaver
 
         public bool ProcessTypes(IReadOnlyList<FoundType> foundTypes)
         {
-            foreach (FoundType foundType in foundTypes)
+            foreach (var foundType in foundTypes)
             {
                 ProcessType(foundType);
             }
@@ -42,16 +41,16 @@ namespace Mirage.Weaver
             return modified;
         }
 
-        void ProcessType(FoundType foundType)
+        private void ProcessType(FoundType foundType)
         {
-            foreach (MethodDefinition md in foundType.TypeDefinition.Methods)
+            foreach (var md in foundType.TypeDefinition.Methods)
             {
                 ProcessMethod(md, foundType);
             }
 
             if (!foundType.IsNetworkBehaviour)
             {
-                foreach (FieldDefinition fd in foundType.TypeDefinition.Fields)
+                foreach (var fd in foundType.TypeDefinition.Fields)
                 {
                     ProcessFields(fd, foundType);
                 }
@@ -63,7 +62,7 @@ namespace Mirage.Weaver
         /// </summary>
         /// <param name="fd"></param>
         /// <param name="foundType"></param>
-        void ProcessFields(FieldDefinition fd, FoundType foundType)
+        private void ProcessFields(FieldDefinition fd, FoundType foundType)
         {
             if (fd.HasCustomAttribute<SyncVarAttribute>())
                 logger.Error($"SyncVar {fd.Name} must be inside a NetworkBehaviour. {foundType.TypeDefinition.Name} is not a NetworkBehaviour", fd);
@@ -75,7 +74,7 @@ namespace Mirage.Weaver
             }
         }
 
-        void ProcessMethod(MethodDefinition md, FoundType foundType)
+        private void ProcessMethod(MethodDefinition md, FoundType foundType)
         {
             if (IgnoreMethod(md))
                 return;
@@ -88,25 +87,26 @@ namespace Mirage.Weaver
         /// </summary>
         /// <param name="md"></param>
         /// <returns></returns>
-        static bool IgnoreMethod(MethodDefinition md)
+        private static bool IgnoreMethod(MethodDefinition md)
         {
             return md.Name == ".cctor" ||
                 md.Name == NetworkBehaviourProcessor.ProcessedFunctionName;
         }
 
-        void ProcessMethodAttributes(MethodDefinition md, FoundType foundType)
+        private void ProcessMethodAttributes(MethodDefinition md, FoundType foundType)
         {
             InjectGuard<ServerAttribute>(md, foundType, IsServer, "[Server] function '{0}' called when server not active");
             InjectGuard<ClientAttribute>(md, foundType, IsClient, "[Client] function '{0}' called when client not active");
             InjectGuard<HasAuthorityAttribute>(md, foundType, HasAuthority, "[Has Authority] function '{0}' called on player without authority");
             InjectGuard<LocalPlayerAttribute>(md, foundType, IsLocalPlayer, "[Local Player] function '{0}' called on nonlocal player");
+            InjectNetworkMethodGuard(md, foundType);
             CheckAttribute<ServerRpcAttribute>(md, foundType);
             CheckAttribute<ClientRpcAttribute>(md, foundType);
         }
 
-        void CheckAttribute<TAttribute>(MethodDefinition md, FoundType foundType)
+        private void CheckAttribute<TAttribute>(MethodDefinition md, FoundType foundType)
         {
-            CustomAttribute attribute = md.GetCustomAttribute<TAttribute>();
+            var attribute = md.GetCustomAttribute<TAttribute>();
             if (attribute == null)
                 return;
 
@@ -116,80 +116,168 @@ namespace Mirage.Weaver
             }
         }
 
-        void InjectGuard<TAttribute>(MethodDefinition md, FoundType foundType, MethodReference predicate, string format)
+        private bool TryGetAttribute<TAttribute>(MethodDefinition md, FoundType foundType, out CustomAttribute attribute)
         {
-            CustomAttribute attribute = md.GetCustomAttribute<TAttribute>();
+            attribute = md.GetCustomAttribute<TAttribute>();
             if (attribute == null)
-                return;
+                return false;
 
             if (md.IsAbstract)
             {
                 logger.Error($"{typeof(TAttribute)} can't be applied to abstract method. Apply to override methods instead.", md);
-                return;
+                return false;
             }
 
             if (!foundType.IsNetworkBehaviour)
             {
                 logger.Error($"{attribute.AttributeType.Name} method {md.Name} must be declared in a NetworkBehaviour", md);
-                return;
+                return false;
             }
 
             if (md.Name == "Awake" && !md.HasParameters)
             {
                 logger.Error($"{attribute.AttributeType.Name} will not work on the Awake method.", md);
-                return;
+                return false;
+            }
+
+            if (md.IsStatic)
+            {
+                logger.Error($"{attribute.AttributeType.Name} will not work on static method.", md);
+                return false;
             }
 
             // dont need to set modified for errors, so we set it here when we start doing ILProcessing
             modified = true;
+            return true;
+        }
 
-            bool throwError = attribute.GetField("error", true);
-            ILProcessor worker = md.Body.GetILProcessor();
-            Instruction top = md.Body.Instructions[0];
+        private void InjectGuard<TAttribute>(MethodDefinition md, FoundType foundType, MethodReference predicate, string format)
+        {
+            if (!TryGetAttribute<TAttribute>(md, foundType, out var attribute))
+                return;
+
+            var throwError = attribute.GetField("error", true);
+            var worker = md.Body.GetILProcessor();
+            var top = md.Body.Instructions[0];
 
             worker.InsertBefore(top, worker.Create(OpCodes.Ldarg_0));
             worker.InsertBefore(top, worker.Create(OpCodes.Call, predicate));
             worker.InsertBefore(top, worker.Create(OpCodes.Brtrue, top));
+
             if (throwError)
             {
-                string message = string.Format(format, md.Name);
+                var message = string.Format(format, md.Name);
                 worker.InsertBefore(top, worker.Create(OpCodes.Ldstr, message));
                 worker.InsertBefore(top, worker.Create(OpCodes.Newobj, () => new MethodInvocationException("")));
                 worker.InsertBefore(top, worker.Create(OpCodes.Throw));
             }
-            InjectGuardParameters(md, worker, top);
-            InjectGuardReturnValue(md, worker, top);
-            worker.InsertBefore(top, worker.Create(OpCodes.Ret));
+            else
+            {
+                // dont need to set param or return if we throw
+                InjectGuardParameters(md, worker, top);
+                InjectGuardReturnValue(md, worker, top);
+                worker.InsertBefore(top, worker.Create(OpCodes.Ret));
+            }
         }
 
-        // this is required to early-out from a function with "ref" or "out" parameters
-        static void InjectGuardParameters(MethodDefinition md, ILProcessor worker, Instruction top)
+        private void InjectNetworkMethodGuard(MethodDefinition md, FoundType foundType)
         {
-            int offset = md.Resolve().IsStatic ? 0 : 1;
-            for (int index = 0; index < md.Parameters.Count; index++)
+            if (!TryGetAttribute<NetworkMethodAttribute>(md, foundType, out var attribute))
+                return;
+
+            // Get the required flags from the attribute constructor argument
+            var requiredFlagsValue = (NetworkFlags)attribute.ConstructorArguments[0].Value;
+            var throwError = attribute.GetField("error", true);
+            var worker = md.Body.GetILProcessor();
+            var top = md.Body.Instructions[0];
+
+            // check for each flag
+            // if true, then jump to start of code
+            // this should act as an OR check
+            if (requiredFlagsValue.HasFlag(NetworkFlags.Server))
             {
-                ParameterDefinition param = md.Parameters[index];
-                if (param.IsOut)
-                {
-                    TypeReference elementType = param.ParameterType.GetElementType();
+                worker.InsertBefore(top, worker.Create(OpCodes.Ldarg_0));
+                worker.InsertBefore(top, worker.Create(OpCodes.Call, IsServer));
+                worker.InsertBefore(top, worker.Create(OpCodes.Brtrue, top));
+            }
+            if (requiredFlagsValue.HasFlag(NetworkFlags.Client))
+            {
+                worker.InsertBefore(top, worker.Create(OpCodes.Ldarg_0));
+                worker.InsertBefore(top, worker.Create(OpCodes.Call, IsClient));
+                worker.InsertBefore(top, worker.Create(OpCodes.Brtrue, top));
+            }
+            if (requiredFlagsValue.HasFlag(NetworkFlags.HasAuthority))
+            {
+                worker.InsertBefore(top, worker.Create(OpCodes.Ldarg_0));
+                worker.InsertBefore(top, worker.Create(OpCodes.Call, HasAuthority));
+                worker.InsertBefore(top, worker.Create(OpCodes.Brtrue, top));
+            }
+            if (requiredFlagsValue.HasFlag(NetworkFlags.LocalOwner))
+            {
+                // Check if the object is the local player's
+                worker.InsertBefore(top, worker.Create(OpCodes.Ldarg_0));
+                worker.InsertBefore(top, worker.Create(OpCodes.Call, IsLocalPlayer));
+                worker.InsertBefore(top, worker.Create(OpCodes.Brtrue, top));
+            }
 
-                    VariableDefinition elementLocal = md.AddLocal(elementType);
+            if (requiredFlagsValue.HasFlag(NetworkFlags.NotActive))
+            {
+                // Check if neither Server nor Clients are active
+                worker.InsertBefore(top, worker.Create(OpCodes.Ldarg_0));
+                worker.InsertBefore(top, worker.Create(OpCodes.Call, IsServer));
+                worker.InsertBefore(top, worker.Create(OpCodes.Ldarg_0));
+                worker.InsertBefore(top, worker.Create(OpCodes.Call, IsClient));
+                worker.InsertBefore(top, worker.Create(OpCodes.Or));
+                worker.InsertBefore(top, worker.Create(OpCodes.Brfalse, top));
+            }
 
-                    worker.InsertBefore(top, worker.Create(OpCodes.Ldarg, index + offset));
-                    worker.InsertBefore(top, worker.Create(OpCodes.Ldloca, elementLocal));
-                    worker.InsertBefore(top, worker.Create(OpCodes.Initobj, elementType));
-                    worker.InsertBefore(top, worker.Create(OpCodes.Ldloc, elementLocal));
-                    worker.InsertBefore(top, worker.Create(OpCodes.Stobj, elementType));
-                }
+            if (throwError)
+            {
+                var message = $"Method '{md.Name}' cannot be executed as {nameof(NetworkFlags)} condition is not met.";
+                worker.InsertBefore(top, worker.Create(OpCodes.Ldstr, message));
+                worker.InsertBefore(top, worker.Create(OpCodes.Newobj, () => new MethodInvocationException("")));
+                worker.InsertBefore(top, worker.Create(OpCodes.Throw));
+            }
+            else
+            {
+                // dont need to set param or return if we throw
+                InjectGuardParameters(md, worker, top);
+                InjectGuardReturnValue(md, worker, top);
+                worker.InsertBefore(top, worker.Create(OpCodes.Ret));
+            }
+        }
+
+
+        // this is required to early-out from a function with "out" parameters
+        private static void InjectGuardParameters(MethodDefinition md, ILProcessor worker, Instruction top)
+        {
+            var offset = md.Resolve().IsStatic ? 0 : 1;
+            for (var index = 0; index < md.Parameters.Count; index++)
+            {
+                var param = md.Parameters[index];
+                // IsOut will be TRUE for `out` but FALSE for `ref`
+                // this is what we want, because we dont want to set `ref` values
+                if (!param.IsOut)
+                    continue;
+
+                var byRefType = (Mono.Cecil.ByReferenceType)param.ParameterType;
+
+                // need to use ElementType not GetElementType()
+                //   GetElementType() will get the element type of the inner elementType
+                //   which will return wrong type for arrays and generics
+                var outType = byRefType.ElementType;
+
+                worker.InsertBefore(top, worker.Create(OpCodes.Ldarg, index + offset));
+                worker.InsertBefore(top, worker.Create(OpCodes.Initobj, outType));
             }
         }
 
         // this is required to early-out from a function with a return value.
-        static void InjectGuardReturnValue(MethodDefinition md, ILProcessor worker, Instruction top)
+        private static void InjectGuardReturnValue(MethodDefinition md, ILProcessor worker, Instruction top)
         {
             if (!md.ReturnType.Is(typeof(void)))
             {
-                VariableDefinition returnLocal = md.AddLocal(md.ReturnType);
+                var returnLocal = md.AddLocal(md.ReturnType);
                 worker.InsertBefore(top, worker.Create(OpCodes.Ldloca, returnLocal));
                 worker.InsertBefore(top, worker.Create(OpCodes.Initobj, md.ReturnType));
                 worker.InsertBefore(top, worker.Create(OpCodes.Ldloc, returnLocal));

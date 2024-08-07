@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 
 namespace Mirage.SocketLayer
@@ -8,37 +9,47 @@ namespace Mirage.SocketLayer
     /// </summary>
     internal class ConnectKeyValidator
     {
-        readonly byte[] key;
+        private readonly byte[] _key;
         public readonly int KeyLength;
-        const int OFFSET = 2;
+        private const int OFFSET = 2;
 
         public ConnectKeyValidator(byte[] key)
         {
-            this.key = key;
+            _key = key;
             KeyLength = key.Length;
         }
 
-        static byte[] GetKeyBytes(string key)
+        private static byte[] GetKeyBytes(string key)
         {
             // default to mirage version
             if (string.IsNullOrEmpty(key))
             {
-                string version = typeof(ConnectKeyValidator).Assembly.GetName().Version.Major.ToString();
+                var version = typeof(ConnectKeyValidator).Assembly.GetName().Version.Major.ToString();
                 key = $"Mirage V{version}";
             }
 
-            return Encoding.ASCII.GetBytes(key);
+            var bytes = Encoding.ASCII.GetBytes(key);
+            using (var sha = SHA256.Create())
+            {
+                var hash = sha.ComputeHash(bytes);
+                return hash;
+            }
         }
         public ConnectKeyValidator(string key) : this(GetKeyBytes(key))
         {
         }
 
-        public bool Validate(byte[] buffer)
+        public bool Validate(byte[] buffer, int length)
         {
-            for (int i = 0; i < KeyLength; i++)
+            // buffer is pooled, so might contain old data,
+            // check the length so we only process that new data (if it is correct length)
+            if (length != OFFSET + KeyLength)
+                return false;
+
+            for (var i = 0; i < KeyLength; i++)
             {
-                byte keyByte = buffer[i + OFFSET];
-                if (keyByte != key[i])
+                var keyByte = buffer[i + OFFSET];
+                if (keyByte != _key[i])
                     return false;
             }
 
@@ -47,9 +58,9 @@ namespace Mirage.SocketLayer
 
         public void CopyTo(byte[] buffer)
         {
-            for (int i = 0; i < KeyLength; i++)
+            for (var i = 0; i < KeyLength; i++)
             {
-                buffer[i + OFFSET] = key[i];
+                buffer[i + OFFSET] = _key[i];
             }
         }
     }

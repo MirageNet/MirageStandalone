@@ -14,21 +14,21 @@ namespace Mirage
         /// The network client that spawned the parent object
         /// used to lookup the identity if it exists
         /// </summary>
-        internal IObjectLocator objectLocator;
-        internal uint netId;
+        internal IObjectLocator _objectLocator;
+        internal uint _netId;
 
-        internal GameObject gameObject;
+        internal GameObject _gameObject;
 
-        internal uint NetId => gameObject != null ? gameObject.GetComponent<NetworkIdentity>().NetId : netId;
+        internal uint NetId => _gameObject != null ? _gameObject.GetComponent<NetworkIdentity>().NetId : _netId;
 
         public GameObject Value
         {
             get
             {
-                if (gameObject != null)
-                    return gameObject;
+                if (_gameObject != null)
+                    return _gameObject;
 
-                if (objectLocator != null && objectLocator.TryGetIdentity(NetId, out NetworkIdentity result))
+                if (_objectLocator != null && _objectLocator.TryGetIdentity(NetId, out var result))
                 {
                     return result.gameObject;
                 }
@@ -39,8 +39,8 @@ namespace Mirage
             set
             {
                 if (value == null)
-                    netId = 0;
-                gameObject = value;
+                    _netId = 0;
+                _gameObject = value;
             }
         }
     }
@@ -54,16 +54,18 @@ namespace Mirage
 
         public static GameObjectSyncvar ReadGameObjectSyncVar(this NetworkReader reader)
         {
-            uint netId = reader.ReadPackedUInt32();
+            var mirageReader = reader.ToMirageReader();
+
+            var netId = reader.ReadPackedUInt32();
 
             NetworkIdentity identity = null;
-            bool hasValue = reader.ObjectLocator?.TryGetIdentity(netId, out identity) ?? false;
+            var hasValue = mirageReader.ObjectLocator?.TryGetIdentity(netId, out identity) ?? false;
 
             return new GameObjectSyncvar
             {
-                objectLocator = reader.ObjectLocator,
-                netId = netId,
-                gameObject = hasValue ? identity.gameObject : null
+                _objectLocator = mirageReader.ObjectLocator,
+                _netId = netId,
+                _gameObject = hasValue ? identity.gameObject : null
             };
         }
     }

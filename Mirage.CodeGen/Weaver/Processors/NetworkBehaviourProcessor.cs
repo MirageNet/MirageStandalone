@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Mirage.CodeGen;
 using Mirage.Weaver.NetworkBehaviours;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -12,18 +13,24 @@ namespace Mirage.Weaver
         ClientRpc
     }
 
+    public enum ReturnType
+    {
+        Void,
+        UniTask,
+    }
+
     /// <summary>
     /// processes SyncVars, Cmds, Rpcs, etc. of NetworkBehaviours
     /// </summary>
-    class NetworkBehaviourProcessor
+    internal class NetworkBehaviourProcessor
     {
-        readonly TypeDefinition netBehaviourSubclass;
+        private readonly TypeDefinition netBehaviourSubclass;
         private readonly IWeaverLogger logger;
-        readonly ServerRpcProcessor serverRpcProcessor;
-        readonly ClientRpcProcessor clientRpcProcessor;
-        readonly SyncVarProcessor syncVarProcessor;
-        readonly SyncObjectProcessor syncObjectProcessor;
-        readonly ConstFieldTracker rpcCounter;
+        private readonly ServerRpcProcessor serverRpcProcessor;
+        private readonly ClientRpcProcessor clientRpcProcessor;
+        private readonly SyncVarProcessor syncVarProcessor;
+        private readonly SyncObjectProcessor syncObjectProcessor;
+        private readonly ConstFieldTracker rpcCounter;
 
         public NetworkBehaviourProcessor(TypeDefinition td, Readers readers, Writers writers, PropertySiteProcessor propertySiteProcessor, IWeaverLogger logger)
         {
@@ -82,22 +89,33 @@ namespace Mirage.Weaver
         {
             if (!WasProcessed(td))
             {
-                MethodDefinition versionMethod = td.AddMethod(ProcessedFunctionName, MethodAttributes.Private);
-                ILProcessor worker = versionMethod.Body.GetILProcessor();
+                var versionMethod = td.AddMethod(ProcessedFunctionName, MethodAttributes.Private);
+                var worker = versionMethod.Body.GetILProcessor();
                 worker.Append(worker.Create(OpCodes.Ret));
             }
         }
         #endregion
 
-        void RegisterRpcs(List<RpcMethod> rpcs)
+        private void RegisterRpcs(List<RpcMethod> rpcs)
         {
+            Weaver.DebugLog(netBehaviourSubclass, "Set const RPC Count");
             SetRpcCount(rpcs.Count);
-            Weaver.DebugLog(netBehaviourSubclass, "  GenerateConstants ");
 
-            netBehaviourSubclass.AddToConstructor(logger, (worker) =>
-            {
-                RegisterRpc.RegisterAll(worker, rpcs);
-            });
+            // if there are no rpcs then we dont need to override method
+            if (rpcs.Count == 0)
+                return;
+
+            Weaver.DebugLog(netBehaviourSubclass, "Override RegisterRPC");
+
+            var helper = new RegisterRpcHelper(netBehaviourSubclass.Module, netBehaviourSubclass);
+            if (helper.HasManualOverride())
+                throw new RpcException($"{helper.MethodName} should not have a manual override", helper.GetManualOverride());
+
+            helper.AddMethod();
+
+            RegisterRpc.RegisterAll(helper.Worker, rpcs);
+
+            helper.Worker.Emit(OpCodes.Ret);
         }
 
         private void SetRpcCount(int count)
@@ -106,26 +124,26 @@ namespace Mirage.Weaver
             rpcCounter.Set(count);
 
             // override virtual method so returns total
-            MethodDefinition method = netBehaviourSubclass.AddMethod(nameof(NetworkBehaviour.GetRpcCount), MethodAttributes.Virtual | MethodAttributes.Family, typeof(int));
-            ILProcessor worker = method.Body.GetILProcessor();
+            var method = netBehaviourSubclass.AddMethod(nameof(NetworkBehaviour.GetRpcCount), MethodAttributes.Virtual | MethodAttributes.Family, typeof(int));
+            var worker = method.Body.GetILProcessor();
             // write count of base+current so that `GetInBase` call will return total
             worker.Emit(OpCodes.Ldc_I4, rpcCounter.GetInBase() + count);
             worker.Emit(OpCodes.Ret);
         }
 
-        void ProcessRpcs()
+        private void ProcessRpcs()
         {
             // copy the list of methods because we will be adding methods in the loop
             var methods = new List<MethodDefinition>(netBehaviourSubclass.Methods);
 
             var rpcs = new List<RpcMethod>();
 
-            int index = rpcCounter.GetInBase();
-            foreach (MethodDefinition md in methods)
+            var index = rpcCounter.GetInBase();
+            foreach (var md in methods)
             {
                 try
                 {
-                    RpcMethod rpc = CheckAndProcessRpc(md, index);
+                    var rpc = CheckAndProcessRpc(md, index);
                     if (rpc != null)
                     {
                         // increment only if rpc was count
@@ -144,13 +162,13 @@ namespace Mirage.Weaver
 
         private RpcMethod CheckAndProcessRpc(MethodDefinition md, int index)
         {
-            if (md.TryGetCustomAttribute<ServerRpcAttribute>(out CustomAttribute serverAttribute))
+            if (md.TryGetCustomAttribute<ServerRpcAttribute>(out var serverAttribute))
             {
                 if (md.HasCustomAttribute<ClientRpcAttribute>()) throw new RpcException("Method should not have both ServerRpc and ClientRpc", md);
 
                 return serverRpcProcessor.ProcessRpc(md, serverAttribute, index);
             }
-            else if (md.TryGetCustomAttribute<ClientRpcAttribute>(out CustomAttribute clientAttribute))
+            else if (md.TryGetCustomAttribute<ClientRpcAttribute>(out var clientAttribute))
             {
                 return clientRpcProcessor.ProcessRpc(md, clientAttribute, index);
             }

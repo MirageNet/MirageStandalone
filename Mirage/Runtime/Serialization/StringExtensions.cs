@@ -6,17 +6,40 @@ namespace Mirage.Serialization
 {
     public static class StringExtensions
     {
-        /// <summary>
-        /// Defaults MTU, 1300
-        /// <para>Can be changed by user if they need to</para>
-        /// </summary>
-        public static int MaxStringLength = 1300;
+        private static int maxStringLength = 1300;
 
-        static readonly UTF8Encoding encoding = new UTF8Encoding(false, true);
-        static readonly byte[] stringBuffer = new byte[MaxStringLength];
+        /// <summary>
+        /// Maximum number of bytes a string can be serialized to. This is to avoid allocation attack.
+        /// <para>Defaults MTU, 1300</para>
+        /// <para>NOTE: this is byte size after Encoding</para>
+        /// <para>IMPORTANT: Setting this property will resize the internal buffer. Do not call in hotpath. It is best to call once when you start the application</para>
+        /// </summary>
+        public static int MaxStringLength
+        {
+            get => maxStringLength;
+            set
+            {
+                if (maxStringLength == value)
+                    return;
+
+                maxStringLength = value;
+                Array.Resize(ref stringBuffer, value);
+            }
+        }
+
+        private static readonly UTF8Encoding defaultEncoding = new UTF8Encoding(false, true);
+        private static byte[] stringBuffer = new byte[MaxStringLength];
 
         /// <param name="value">string or null</param>
-        public static void WriteString(this NetworkWriter writer, string value)
+        public static void WriteString(this NetworkWriter writer, string value) => WriteString(writer, value, defaultEncoding);
+
+        /// <returns>string or null</returns>
+        /// <exception cref="ArgumentException">Throws if invalid utf8 string is received</exception>
+        public static string ReadString(this NetworkReader reader) => ReadString(reader, defaultEncoding);
+
+        /// <param name="encoding">Use this for encoding other than the default (UTF8). Make sure to use same encoding for ReadString</param>
+        /// <param name="value">string or null</param>
+        public static void WriteString(this NetworkWriter writer, string value, Encoding encoding)
         {
             // write 0 for null support, increment real size by 1
             // (note: original HLAPI would write "" for null strings, but if a
@@ -30,7 +53,7 @@ namespace Mirage.Serialization
 
             // write string with same method as NetworkReader
             // convert to byte[]
-            int size = encoding.GetBytes(value, 0, value.Length, stringBuffer, 0);
+            var size = encoding.GetBytes(value, 0, value.Length, stringBuffer, 0);
 
             // check if within max size
             if (size >= MaxStringLength)
@@ -43,18 +66,18 @@ namespace Mirage.Serialization
             writer.WriteBytes(stringBuffer, 0, size);
         }
 
-
+        /// <param name="encoding">Use this for encoding other than the default (UTF8). Make sure to use same encoding for WriterString</param>
         /// <returns>string or null</returns>
         /// <exception cref="ArgumentException">Throws if invalid utf8 string is received</exception>
-        public static string ReadString(this NetworkReader reader)
+        public static string ReadString(this NetworkReader reader, Encoding encoding)
         {
             // read number of bytes
-            ushort size = reader.ReadUInt16();
+            var size = reader.ReadUInt16();
 
             if (size == 0)
                 return null;
 
-            int realSize = size - 1;
+            var realSize = size - 1;
 
             // make sure it's within limits to avoid allocation attacks etc.
             if (realSize >= MaxStringLength)
@@ -62,11 +85,10 @@ namespace Mirage.Serialization
                 throw new EndOfStreamException($"ReadString too long: {realSize}. Limit is: {MaxStringLength}");
             }
 
-            ArraySegment<byte> data = reader.ReadBytesSegment(realSize);
+            var data = reader.ReadBytesSegment(realSize);
 
             // convert directly from buffer to string via encoding
             return encoding.GetString(data.Array, data.Offset, data.Count);
         }
-
     }
 }
