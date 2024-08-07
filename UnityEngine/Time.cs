@@ -6,15 +6,21 @@ namespace UnityEngine
 {
     public static class Time
     {
-        static float start;
+        static double start;
 
-        static float GetNow() => Stopwatch.GetTimestamp() / (float)Stopwatch.Frequency;
+        static double GetNow() => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
 
         static Time()
         {
             start = GetNow();
         }
 
-        public static float time => GetNow() - start;
+        public static float time => (float)(GetNow() - start);
+
+        public static double timeAsDouble;
+
+        // NOTE: This will have to be incremented manually!
+        public static int frameCount = 0;
+
     }
 }
