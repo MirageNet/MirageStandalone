@@ -1,17 +1,27 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net6.0</TargetFramework>
-  </PropertyGroup>
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net6.0</TargetFramework>
+	</PropertyGroup>
 
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="$(SolutionDir)\Mirage.CodeGen\bin\$(ConfigurationName)\net5.0\Mirage.CodeGen.exe $(TargetPath)" />
-    <Error Condition="$(ExitCode) == 1" />
-  </Target>
+	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
+		<Exec Command="$(SolutionDir)\Mirage.CodeGen\bin\$(ConfigurationName)\net6.0\Mirage.CodeGen.exe $(TargetPath)" />
+		<Error Condition="$(ExitCode) == 1" />
+		
+		<!-- Copy the libraries since this will cause a error otherwise. Win, Mac, Linux. -->
+		<Exec Command='copy /y "$(SolutionDir)\Mirage.Sockets\Sockets\Udp\NanoSockets\Plugins\nanosockets.dll" "$(TargetDir)"' />		
+		<Exec Command='copy /y "$(SolutionDir)\Mirage.Sockets\Sockets\Udp\NanoSockets\Plugins\libnanosockets.bundle" "$(TargetDir)" ' />	
+		<Exec Command='copy /y "$(SolutionDir)\Mirage.Sockets\Sockets\Udp\NanoSockets\Plugins\libnanosockets.so" "$(TargetDir)" '/>
+	</Target>
 
-  <ItemGroup>
-    <ProjectReference Include="..\Mirage\Mirage.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\Mirage.Logging\Mirage.Logging.csproj" />
+		<ProjectReference Include="..\Mirage.SocketLayer\Mirage.SocketLayer.csproj" />
+		<ProjectReference Include="..\Mirage.Sockets\Mirage.Sockets.csproj" />
+		<ProjectReference Include="..\Mirage.Standalone\Mirage.Standalone.csproj" />
+		<ProjectReference Include="..\Mirage\Mirage.csproj" />
+		<ProjectReference Include="..\UnityEngine\FakeUnityEngine.csproj" />
+	</ItemGroup>
 
 </Project>
