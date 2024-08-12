@@ -26,7 +26,6 @@ namespace Mirage.Sockets.Udp
         [Header("NanoSocket-specific Options")]
         public int BufferSize = 256 * 1024;
 
-
         public override int MaxPacketSize => UdpMTU.MaxPacketSize;
 
         // Determines if we can use NanoSockets for socket-level IO. This will be true if either:
@@ -53,8 +52,17 @@ namespace Mirage.Sockets.Udp
 
         private void Awake()
         {
-            if (useNanoSocket)
-                InitNanosocket();
+            // We might get an exception, so best to catch it.
+            try
+            {
+                if (useNanoSocket)
+                    InitNanosocket();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"NanoSocket initialization error: {ex.Message}. Falling back to managed sockets.");
+                SocketLib = SocketLib.Managed;
+            }
         }
 
         private void InitNanosocket()
