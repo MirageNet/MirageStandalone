@@ -12,7 +12,7 @@
   
   <ItemGroup>
     <ProjectReference Include="..\Mirage.Standalone\Mirage.Standalone.csproj" />
-    <ProjectReference Include="..\Mirage\Mirage.csproj" />
+    <ProjectReference Include="..\Mirage.Core\Mirage.Core.csproj" />
     <ProjectReference Include="..\UnityEngine\FakeUnityEngine.csproj" />
   </ItemGroup>
 

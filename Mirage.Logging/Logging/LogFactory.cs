@@ -17,12 +17,12 @@ namespace Mirage.Logging
         /// </summary>
         private static Func<string, ILogHandler> createLoggerForType = _ => Debug.unityLogger;
 
-        public static ILogger GetLogger<T>(LogType defaultLogLevel = LogType.Warning)
+        public static ILogger GetLogger<T>(LogType defaultLogLevel = LogType.Log)
         {
             return GetLogger(typeof(T), defaultLogLevel);
         }
 
-        public static ILogger GetLogger(System.Type type, LogType defaultLogLevel = LogType.Warning)
+        public static ILogger GetLogger(System.Type type, LogType defaultLogLevel = LogType.Log)
         {
             // Full name for generic type is messy, instead
             if (type.IsGenericType && !type.IsGenericTypeDefinition)
@@ -39,7 +39,7 @@ namespace Mirage.Logging
             }
         }
 
-        public static ILogger GetLogger(string loggerName, LogType defaultLogLevel = LogType.Warning)
+        public static ILogger GetLogger(string loggerName, LogType defaultLogLevel = LogType.Log)
         {
             if (_loggers.TryGetValue(loggerName, out var logger))
             {
