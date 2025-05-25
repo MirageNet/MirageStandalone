@@ -6,6 +6,8 @@ Mirage is a rolling-release high-level API for the Unity Game Engine that provid
 
 ## Install
 
+Requires installation of .NET 8: https://dotnet.microsoft.com/en-us/download/dotnet/8.0
+
 Either add source code to your project, or add the [nuget package](https://www.nuget.org/packages/MirageNet.Mirage/)
 
 ## Adding Weaver to project

@@ -1,13 +1,13 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
+        <TargetFramework>net8.0</TargetFramework>
     </PropertyGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\Mirage.Logging\Mirage.Logging.csproj" />
       <ProjectReference Include="..\Mirage.Sockets\Mirage.Sockets.csproj" />
-      <ProjectReference Include="..\Mirage\Mirage.csproj" />
+      <ProjectReference Include="..\Mirage.Core\Mirage.Core.csproj" />
       <ProjectReference Include="..\UnityEngine\FakeUnityEngine.csproj" />
     </ItemGroup>
 
